@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+*.egg
+
+# AppImage build artefacts
+*.AppImage
+squashfs-root/
+
+# cx_Freeze / MSI build artefacts
+*.msi
+freeze_build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Qt
+*.qm
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Local agent state
+.claude/

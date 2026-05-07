@@ -1,0 +1,10 @@
+# Requirements bundled into the AppImage.
+# Versions must stay in sync with pyproject.toml [project.dependencies].
+# python-appimage pip-installs these into its embedded Python — no pre-built
+# wheels are used; everything is installed from sdist/pure-wheel by pip.
+PySide6>=6.5
+httpx>=0.27
+platformdirs>=4.0
+grpcio>=1.60
+grpcio-tools>=1.60
+# The app itself is installed via --app-dir (see build_appimage.sh).

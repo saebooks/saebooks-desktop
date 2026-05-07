@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=SAE Books
+Comment=Self-hosted accounting desktop client
+Exec=saebooks-desktop
+Icon=saebooks-desktop
+Type=Application
+Categories=Office;Finance;
+Keywords=accounting;invoicing;books;
+StartupWMClass=SAEBooks
