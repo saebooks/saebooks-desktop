@@ -5,6 +5,30 @@ All notable changes to the SAE Books desktop client will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-05-08
+
+### Fixed
+
+- **AppImage build.** `scripts/build_appimage.sh` was calling
+  `python-appimage build app` with flags that don't exist
+  (`--requirements`, `--app-dir`, `--entrypoint`, `--output-filename`),
+  so v0.1.1 / v0.1.2 / v0.1.3 release builds failed at the AppImage
+  step. Rewritten to match the real CLI: stage a temp appdir with
+  `entrypoint.sh`, per-version `.desktop`, SVG icon, and a
+  `requirements.txt` that references a freshly-built `saebooks_desktop`
+  wheel by absolute path; invoke `python -m python_appimage build app
+  -l manylinux_2_28_<arch> -p 3.12 <appdir>`.
+  - `deploy/appimage/AppRun.sh` → renamed `entrypoint.sh`
+  - `deploy/appimage/saebooks-desktop.svg` — placeholder icon (replace
+    before public 1.0)
+- **`QStandardItemModel` import in `purchase_order_detail.py`.** Imported
+  from `PySide6.QtWidgets` (where it does not exist in current PySide6)
+  instead of `PySide6.QtGui`. This broke 36 tests in
+  `test_main_window_navigation.py` and `test_smoke.py` with
+  `ImportError: cannot import name 'QStandardItemModel'`. All other
+  views were already importing correctly. Pure import correction, no
+  behaviour change.
+
 ## [0.1.3] - 2026-05-08
 
 ### Changed

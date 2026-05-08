@@ -24,12 +24,11 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QStandardItemModel,
     QTableView,
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtGui import QStandardItem
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 
 from saebooks_desktop.services.api_client import APIClient
 from saebooks_desktop.services.purchase_orders import get_purchase_order
