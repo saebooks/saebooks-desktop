@@ -127,3 +127,67 @@ class TestSignInLoginFlow:
         page.initializePage()
         assert not page._login_ok
         assert page._status_label.text() == ""
+
+
+class TestSignInTokenPath:
+    """Bearer-token paste flow used immediately after `bootstrap-admin`."""
+
+    def test_token_radio_present(self, qapp) -> None:
+        page = _make_page()
+        assert hasattr(page, "_radio_token")
+        assert hasattr(page, "_radio_password")
+        assert page._radio_password.isChecked()
+
+    def test_token_input_field_present(self, qapp) -> None:
+        from PySide6.QtWidgets import QLineEdit
+        page = _make_page()
+        assert isinstance(page._token_input, QLineEdit)
+
+    def test_empty_token_shows_error(self, qapp) -> None:
+        page = _make_page()
+        page._radio_token.setChecked(True)
+        page._token_input.setText("")
+        page._on_sign_in_clicked()
+        assert not page.isComplete()
+        assert "token" in page._status_label.text().lower()
+
+    def test_valid_token_completes_and_persists(self, qapp) -> None:
+        page = _make_page()
+        page._radio_token.setChecked(True)
+        page._token_input.setText("eyJhbGc.payload.sig")
+
+        with patch(
+            "saebooks_desktop.services.auth.validate_token",
+            return_value={"id": "u1", "email": "owner@example.com"},
+        ):
+            page._on_sign_in_clicked()
+
+        assert page.isComplete()
+        assert "owner@example.com" in page._status_label.text()
+
+        import os as _os
+        orig = _os.environ.get("SAEBOOKS_API_TOKEN", None)
+        try:
+            _os.environ["SAEBOOKS_API_TOKEN"] = ""
+            from saebooks_desktop.services import settings as sm
+            assert sm.get_auth_token() == "eyJhbGc.payload.sig"
+        finally:
+            if orig is not None:
+                _os.environ["SAEBOOKS_API_TOKEN"] = orig
+            else:
+                _os.environ.pop("SAEBOOKS_API_TOKEN", None)
+
+    def test_invalid_token_not_complete(self, qapp) -> None:
+        from saebooks_desktop.services.api_client import APIError
+        page = _make_page()
+        page._radio_token.setChecked(True)
+        page._token_input.setText("not-a-token")
+
+        with patch(
+            "saebooks_desktop.services.auth.validate_token",
+            side_effect=APIError("Token rejected by server (401).", status_code=401),
+        ):
+            page._on_sign_in_clicked()
+
+        assert not page.isComplete()
+        assert "401" in page._status_label.text() or "rejected" in page._status_label.text().lower()

@@ -5,6 +5,43 @@ All notable changes to the SAE Books desktop client will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-05-08
+
+### Changed
+
+- **First-run wizard — server connect page rewritten.** Replaces the old
+  two-mode (local / remote) layout with three transport modes:
+  - **Local Docker** (default) — auto-fills `http://localhost:8042` for
+    REST and `localhost:50051` for gRPC, prefers gRPC.
+  - **Cloud / hosted URL** — REST only. Cloud reverse proxies (Caddy,
+    nginx, Cloudflare, fly.io) almost never pass gRPC frames through
+    transparently, so this mode probes REST only and pins
+    `prefer_grpc=False`.
+  - **LAN server** — both transports available, gRPC preferred, with an
+    inline note explaining why ("3–5× lower latency, long-lived
+    streaming for change events"). The user supplies REST URL + gRPC
+    `host:port` separately.
+  Test connection now probes both REST and gRPC where relevant; the
+  page completes when REST works, but the result message tells the user
+  whether gRPC was reachable too.
+- Persists four QSettings keys: `saebooks/server/{rest_url, grpc_url,
+  transport_mode, prefer_grpc}`. The wizard outcome is mirrored into
+  `transport/mode` (AUTO/GRPC/REST) so `APIClient.resolve_transport()`
+  picks up the right backend without further coupling.
+
+### Added
+
+- **Sign-in — bearer token paste path.** A second mode on the sign-in
+  page accepts the JWT printed by `python -m saebooks.cli
+  bootstrap-admin` on a fresh self-host install. The token is validated
+  by calling `GET /api/v1/me` with it in the Authorization header. This
+  closes the chicken-and-egg gap where bootstrap-admin creates an owner
+  with no password set yet.
+- `services.auth.validate_token(client, token)` helper (used by the new
+  paste path).
+- `services.settings.{get,set}_transport_mode` and
+  `{get,set}_prefer_grpc` accessors.
+
 ## [0.1.2] - 2026-05-08
 
 ### Changed

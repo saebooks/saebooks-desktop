@@ -24,12 +24,21 @@ _APP = "SAE Books"
 
 _KEY_REST_URL = "saebooks/server/rest_url"
 _KEY_GRPC_URL = "saebooks/server/grpc_url"
+_KEY_TRANSPORT_MODE = "saebooks/server/transport_mode"
+_KEY_PREFER_GRPC = "saebooks/server/prefer_grpc"
 _KEY_TOKEN = "saebooks/auth/token"
 _KEY_COMPANY_ID = "saebooks/auth/company_id"
 
 # Mirror keys used by APIClient (saebooks_desktop.settings)
 _API_URL_KEY = "api/url"
 _API_TOKEN_KEY = "api/token"
+
+# Transport mode values
+TRANSPORT_LOCAL = "local"   # Local Docker bundle on this host
+TRANSPORT_CLOUD = "cloud"   # Customer's hosted server reached over public URL
+TRANSPORT_LAN = "lan"       # On-prem server on the same LAN as this client
+
+_VALID_TRANSPORTS = {TRANSPORT_LOCAL, TRANSPORT_CLOUD, TRANSPORT_LAN}
 
 
 def _s() -> QSettings:
@@ -68,6 +77,56 @@ def get_grpc_url() -> str:
 def set_grpc_url(url: str) -> None:
     s = _s()
     s.setValue(_KEY_GRPC_URL, url.rstrip("/"))
+    s.sync()
+
+
+# ---------------------------------------------------------------------------
+# Transport mode
+# ---------------------------------------------------------------------------
+
+
+def get_transport_mode() -> str:
+    """Return the persisted transport mode.
+
+    One of ``"local"``, ``"cloud"`` or ``"lan"``.  Defaults to ``"local"``
+    when nothing has been saved yet (matches the wizard's default selection).
+    """
+    s = _s()
+    value = str(s.value(_KEY_TRANSPORT_MODE, TRANSPORT_LOCAL))
+    return value if value in _VALID_TRANSPORTS else TRANSPORT_LOCAL
+
+
+def set_transport_mode(mode: str) -> None:
+    """Persist the transport mode.  Raises ValueError on unknown mode."""
+    if mode not in _VALID_TRANSPORTS:
+        raise ValueError(
+            f"transport mode must be one of {sorted(_VALID_TRANSPORTS)}; got {mode!r}"
+        )
+    s = _s()
+    s.setValue(_KEY_TRANSPORT_MODE, mode)
+    s.sync()
+
+
+def get_prefer_grpc() -> bool:
+    """Return True if the user prefers gRPC when both transports are available.
+
+    Defaults to True — gRPC is materially faster than REST for list/watch
+    operations and is the recommended transport on local + LAN deployments.
+    Cloud deployments override this at call-site (gRPC isn't reachable
+    through most cloud reverse proxies).
+    """
+    s = _s()
+    raw = s.value(_KEY_PREFER_GRPC, True)
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.lower() in ("1", "true", "yes", "on")
+    return bool(raw)
+
+
+def set_prefer_grpc(prefer: bool) -> None:
+    s = _s()
+    s.setValue(_KEY_PREFER_GRPC, bool(prefer))
     s.sync()
 
 
