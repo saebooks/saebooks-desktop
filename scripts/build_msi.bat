@@ -32,13 +32,10 @@ if not defined BUILT_MSI (
     exit /b 1
 )
 
-python -c "
-import importlib.util, pathlib
-spec = importlib.util.spec_from_file_location('p', 'saebooks_desktop/__init__.py')
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
-print(m.__version__)
-" > "%TEMP%\saebooks_ver.txt"
+REM Resolve version on a single python -c line — cmd.exe terminates a multi-line
+REM `python -c "..."` at the first newline, which silently produces an empty
+REM version and an MSI named "SAEBooks--x64.msi". Keep this on one line.
+python -c "import importlib.util as u;s=u.spec_from_file_location('p','saebooks_desktop/__init__.py');m=u.module_from_spec(s);s.loader.exec_module(m);print(m.__version__)" > "%TEMP%\saebooks_ver.txt"
 set /p VERSION=<"%TEMP%\saebooks_ver.txt"
 
 set "DEST_MSI=dist\SAEBooks-%VERSION%-x64.msi"

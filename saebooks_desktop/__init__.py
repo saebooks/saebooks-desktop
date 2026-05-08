@@ -1,2 +1,2 @@
 """SAE Books desktop client — PySide6/Qt native app."""
-__version__ = "0.1.4"
+__version__ = "0.1.5"

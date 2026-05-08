@@ -5,6 +5,17 @@ All notable changes to the SAE Books desktop client will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-05-08
+
+### Fixed
+
+- **MSI filename in CI release.** `scripts/build_msi.bat` had a multi-line
+  `python -c "..."` to resolve the version, but cmd.exe terminates a
+  multi-line `python -c` at the first newline, so the version came back
+  empty and the artefact attached to the v0.1.4 release was named
+  `SAEBooks--x64.msi`. Collapsed to a single-line `python -c` so the
+  version resolves correctly. v0.1.5 ships as `SAEBooks-0.1.5-x64.msi`.
+
 ## [0.1.4] - 2026-05-08
 
 ### Fixed
