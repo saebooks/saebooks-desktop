@@ -28,6 +28,8 @@ from saebooks_desktop.views.journal_entries import JournalEntriesView
 from saebooks_desktop.views.journal_entry_form import JournalEntryForm
 from saebooks_desktop.views.payment_form import PaymentForm
 from saebooks_desktop.views.payments import PaymentsView
+from saebooks_desktop.views.purchase_order_detail import PurchaseOrderDetailView
+from saebooks_desktop.views.purchase_orders import PurchaseOrdersView
 from saebooks_desktop.views.budgets import BudgetsView
 from saebooks_desktop.views.credit_notes import CreditNoteForm, CreditNotesView
 from saebooks_desktop.views.fixed_assets import FixedAssetDetail, FixedAssetsView
@@ -52,6 +54,7 @@ _NAV_ITEMS: list[tuple[str, bool]] = [
     ("Accounts", True),
     ("Sales", True),
     ("Purchases", True),
+    ("Purchase Orders", True),
     ("Journal Entries", True),
     ("Banking", True),
     ("Payments", True),
@@ -292,6 +295,49 @@ class MainWindow(QMainWindow):
                 self._purchases_stack = purchases_stack
                 self._open_bill_form = _open_bill_form
                 view = purchases_stack
+            elif label == "Purchase Orders" and enabled:
+                po_list_view = PurchaseOrdersView()
+                po_detail_view = PurchaseOrderDetailView()
+                po_stack = QStackedWidget()
+                _po_list_idx = po_stack.addWidget(po_list_view)
+                _po_detail_idx = po_stack.addWidget(po_detail_view)
+
+                po_list_view.po_selected.connect(
+                    lambda po_id, s=po_stack, dv=po_detail_view, di=_po_detail_idx: (
+                        dv.load(po_id),
+                        s.setCurrentIndex(di),
+                    )
+                )
+                po_detail_view.back_requested.connect(
+                    lambda s=po_stack, li=_po_list_idx, lv=po_list_view: (
+                        lv.reload(),
+                        s.setCurrentIndex(li),
+                    )
+                )
+
+                # When convert-to-bill returns a bill id, jump to Purchases
+                # and load that bill in the bill detail view.
+                def _on_bill_opened(
+                    bill_id: str,
+                    win: "MainWindow" = self,
+                ) -> None:
+                    for r, (lbl, _en) in enumerate(_NAV_ITEMS):
+                        if lbl == "Purchases":
+                            win._nav.setCurrentRow(r)
+                            win._stack.setCurrentIndex(win._view_indices[r])
+                            # Show the bill in the purchases stack
+                            if hasattr(win, "_bill_detail_view"):
+                                win._bill_detail_view.load(bill_id)
+                                # Detail is index 1 in the purchases stack
+                                win._purchases_stack.setCurrentIndex(1)
+                            break
+
+                po_detail_view.bill_opened.connect(_on_bill_opened)
+
+                self._po_list_view = po_list_view
+                self._po_detail_view = po_detail_view
+                self._po_stack = po_stack
+                view = po_stack
             elif label == "Journal Entries" and enabled:
                 je_list_view = JournalEntriesView()
                 je_stack = QStackedWidget()
@@ -481,6 +527,11 @@ class MainWindow(QMainWindow):
         prefs_action = edit_menu.addAction("&Preferences\u2026")
         prefs_action.triggered.connect(self._on_preferences)
 
+        # Menu bar \u2014 Tools menu
+        tools_menu = self.menuBar().addMenu("&Tools")
+        prorate_action = tools_menu.addAction("&Prorate Calculator\u2026")
+        prorate_action.triggered.connect(self._on_prorate_calculator)
+
         # Search shortcut — Ctrl+F navigates to the Search nav item
         from PySide6.QtGui import QKeySequence, QShortcut
 
@@ -588,6 +639,14 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     @Slot()
+    def _on_prorate_calculator(self) -> None:
+        """Open the Prorate Calculator dialog (non-modal)."""
+        from saebooks_desktop.views.proration_dialog import ProrationDialog
+
+        dlg = ProrationDialog(parent=self)
+        dlg.show()
+
+    @Slot()
     def _on_reconnect_requested(self) -> None:
         """Handle disconnect from SettingsView — re-show the first-run wizard."""
         from saebooks_desktop.wizard.first_run import FirstRunWizard
@@ -613,6 +672,7 @@ class MainWindow(QMainWindow):
         _type_to_nav: dict[str, str] = {
             "invoice": "Sales",
             "bill": "Purchases",
+            "purchase_order": "Purchase Orders",
             "contact": "Contacts",
             "account": "Accounts",
             "item": "Items",
