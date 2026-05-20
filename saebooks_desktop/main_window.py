@@ -18,6 +18,7 @@ from saebooks_desktop.views.accounts import AccountsView
 from saebooks_desktop.views.banking import BankingView
 from saebooks_desktop.views.bill_detail import BillDetailView
 from saebooks_desktop.views.bills import BillsView
+from saebooks_desktop.views.expenses import ExpensesView
 from saebooks_desktop.views.contacts_view import ContactsView
 from saebooks_desktop.views.invoice_detail import InvoiceDetailView
 from saebooks_desktop.views.bill_form import BillForm
@@ -54,6 +55,7 @@ _NAV_ITEMS: list[tuple[str, bool]] = [
     ("Accounts", True),
     ("Sales", True),
     ("Purchases", True),
+    ("Expenses", True),
     ("Purchase Orders", True),
     ("Journal Entries", True),
     ("Banking", True),
@@ -295,6 +297,26 @@ class MainWindow(QMainWindow):
                 self._purchases_stack = purchases_stack
                 self._open_bill_form = _open_bill_form
                 view = purchases_stack
+            elif label == "Expenses" and enabled:
+                import os
+                import webbrowser
+
+                expenses_view = ExpensesView()
+                _web_base = os.environ.get(
+                    "SAEBOOKS_WEB_URL", "http://localhost:8043"
+                ).rstrip("/")
+                # No native detail/form view yet — clicks open the web
+                # UI in the user's default browser. Desktop is the
+                # read-only list surface for v1; create/edit/post/void
+                # live in saebooks-web.
+                expenses_view.new_expense_requested.connect(
+                    lambda b=_web_base: webbrowser.open(f"{b}/expenses/new")
+                )
+                expenses_view.expense_selected.connect(
+                    lambda eid, b=_web_base: webbrowser.open(f"{b}/expenses/{eid}")
+                )
+                self._expenses_view = expenses_view
+                view = expenses_view
             elif label == "Purchase Orders" and enabled:
                 po_list_view = PurchaseOrdersView()
                 po_detail_view = PurchaseOrderDetailView()
