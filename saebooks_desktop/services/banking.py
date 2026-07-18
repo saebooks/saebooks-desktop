@@ -45,5 +45,5 @@ def list_bank_statement_lines(
     if date_to:
         params["date_to"] = date_to
 
-    data = client.get("/api/v1/bank-statement-lines", params=params)
+    data = client.get("/api/v1/bank_statement_lines", params=params)
     return data.get("items", [])

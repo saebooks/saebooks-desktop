@@ -51,5 +51,5 @@ def run_recurring_invoice(
         The generated invoice dict returned by the API.
     """
     return client.post(
-        f"/api/v1/recurring_invoices/{recurring_invoice_id}/run", json={}
+        f"/api/v1/recurring_invoices/{recurring_invoice_id}/generate", json={}
     )

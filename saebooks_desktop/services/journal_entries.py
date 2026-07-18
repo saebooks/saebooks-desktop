@@ -44,5 +44,5 @@ def list_journal_entries(
     if source_filter and source_filter.lower() in _VALID_SOURCES:
         params["source"] = source_filter.lower()
 
-    data = client.get("/api/v1/journal-entries", params=params)
+    data = client.get("/api/v1/journal_entries", params=params)
     return data.get("items", [])

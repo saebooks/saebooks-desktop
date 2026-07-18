@@ -192,7 +192,7 @@ class TestRunDepreciationService:
         client.post.return_value = _SAMPLE_ASSET_DETAIL
         result = run_depreciation(client, "fa-001")
         client.post.assert_called_once_with(
-            "/api/v1/fixed_assets/fa-001/depreciate", json={}
+            "/api/v1/fixed_assets/fa-001/post_depreciation", json={}
         )
 
     def test_passes_data_to_endpoint(self) -> None:

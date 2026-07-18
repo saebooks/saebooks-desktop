@@ -93,7 +93,7 @@ def validate_token(client: APIClient, token: str) -> dict[str, Any]:
             headers=headers,
             timeout=client._timeout,  # type: ignore[attr-defined]
         ) as c:
-            r = c.get("/api/v1/me")
+            r = c.get("/api/v1/auth/me")
     except httpx.TransportError as exc:
         raise ServerOfflineError(f"Server unreachable: {exc}") from exc
 

@@ -105,13 +105,15 @@ def archive_fixed_asset(client: APIClient, asset_id: str) -> dict[str, Any]:
         ServerOfflineError: If the server is unreachable.
         APIError: On non-2xx response.
     """
-    return client.post(f"/api/v1/fixed_assets/{asset_id}/archive")
+    # Engine has no /archive action — DELETE soft-archives the asset.
+    status = client.delete(f"/api/v1/fixed_assets/{asset_id}")
+    return {"status_code": status}
 
 
 def run_depreciation(
     client: APIClient, asset_id: str, data: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """POST /api/v1/fixed_assets/{asset_id}/depreciate — run a depreciation period.
+    """POST /api/v1/fixed_assets/{asset_id}/post_depreciation — run a depreciation period.
 
     Args:
         client: Caller-supplied APIClient.
@@ -125,7 +127,9 @@ def run_depreciation(
         ServerOfflineError: If the server is unreachable.
         APIError: On non-2xx response.
     """
-    return client.post(f"/api/v1/fixed_assets/{asset_id}/depreciate", json=data or {})
+    return client.post(
+        f"/api/v1/fixed_assets/{asset_id}/post_depreciation", json=data or {}
+    )
 
 
 def dispose_asset(

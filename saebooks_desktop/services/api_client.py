@@ -58,6 +58,54 @@ class ServerOfflineError(APIError):
     """Raised when the server is unreachable (network error, refused, timeout)."""
 
 
+class ModuleUnavailableError(APIError):
+    """Raised when a 503 response identifies a disabled/unreachable engine module.
+
+    The engine surfaces module outages in three body shapes:
+
+    - circuit breaker (problem+json): ``{"code": "module_unavailable",
+      "module": "capture", ...}``
+    - module fail-closed gate (plain FastAPI): ``{"detail": "capture module
+      disabled: CAPTURE_TOKEN is not configured"}``
+    - guarded-import stub: ``{"module": "billing.router", "status": "unavailable"}``
+
+    Views catch this to degrade the affected panel (banner + disabled
+    actions) instead of treating the whole server as broken. Other 503s
+    (e.g. Stripe-not-configured) stay plain ``APIError``.
+    """
+
+    def __init__(self, message: str, module: str | None = None) -> None:
+        super().__init__(message, status_code=503)
+        self.module = module
+
+
+def _module_unavailable_from_503(body_text: str) -> "ModuleUnavailableError | None":
+    """Return a ModuleUnavailableError if a 503 body matches a module-outage shape."""
+    import json as _json
+
+    try:
+        body = _json.loads(body_text)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(body, dict):
+        return None
+    if body.get("code") == "module_unavailable":
+        module = body.get("module")
+        return ModuleUnavailableError(
+            body.get("detail") or f"The {module} module is temporarily unavailable.",
+            module=module,
+        )
+    if body.get("status") == "unavailable" and "module" in body:
+        module = str(body["module"]).split(".")[0]
+        return ModuleUnavailableError(
+            f"The {module} module is unavailable.", module=module
+        )
+    detail = body.get("detail")
+    if isinstance(detail, str) and "module disabled" in detail:
+        return ModuleUnavailableError(detail, module=detail.split(" ")[0])
+    return None
+
+
 class APIClient:
     """Thin synchronous wrapper around httpx for saebooks-api.
 
@@ -153,7 +201,30 @@ class APIClient:
         headers: dict[str, str] = {"Accept": "application/json"}
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
+        # Multi-company tenants: scope every call to the active company.
+        # Engine falls back to "first active company" when absent, which is
+        # wrong the moment a tenant has more than one.
+        try:
+            from saebooks_desktop.services.settings import get_company_id
+
+            company_id = get_company_id()
+            if company_id:
+                headers["X-Company-Id"] = company_id
+        except Exception:  # noqa: BLE001 — QSettings unavailable in bare tests
+            pass
         return headers
+
+    @staticmethod
+    def _raise_api_error(verb: str, path: str, r: httpx.Response) -> None:
+        """Raise the most specific error for a non-2xx response."""
+        if r.status_code == 503:
+            err = _module_unavailable_from_503(r.text)
+            if err is not None:
+                raise err
+        raise APIError(
+            f"{verb} {path} returned {r.status_code}: {r.text[:200]}",
+            status_code=r.status_code,
+        )
 
     def _client(self) -> httpx.Client:
         return httpx.Client(
@@ -175,10 +246,7 @@ class APIClient:
         except httpx.TransportError as exc:
             raise ServerOfflineError(f"Server unreachable: {exc}") from exc
         if not r.is_success:
-            raise APIError(
-                f"GET {path} returned {r.status_code}: {r.text[:200]}",
-                status_code=r.status_code,
-            )
+            self._raise_api_error("GET", path, r)
         return r.json()
 
     def post(
@@ -194,10 +262,7 @@ class APIClient:
         except httpx.TransportError as exc:
             raise ServerOfflineError(f"Server unreachable: {exc}") from exc
         if not r.is_success:
-            raise APIError(
-                f"POST {path} returned {r.status_code}: {r.text[:200]}",
-                status_code=r.status_code,
-            )
+            self._raise_api_error("POST", path, r)
         return r.json()
 
     def patch(
@@ -219,10 +284,7 @@ class APIClient:
         if r.status_code == 409:
             return r.status_code, r.json()
         if not r.is_success:
-            raise APIError(
-                f"PATCH {path} returned {r.status_code}: {r.text[:200]}",
-                status_code=r.status_code,
-            )
+            self._raise_api_error("PATCH", path, r)
         return r.status_code, r.json()
 
     def delete(self, path: str) -> int:
@@ -238,10 +300,7 @@ class APIClient:
         except httpx.TransportError as exc:
             raise ServerOfflineError(f"Server unreachable: {exc}") from exc
         if not r.is_success and r.status_code != 404:
-            raise APIError(
-                f"DELETE {path} returned {r.status_code}: {r.text[:200]}",
-                status_code=r.status_code,
-            )
+            self._raise_api_error("DELETE", path, r)
         return r.status_code
 
     def get_stream(self, path: str, params: dict[str, Any] | None = None):
@@ -269,10 +328,10 @@ class APIClient:
             raise ServerOfflineError(f"Server unreachable: {exc}") from exc
 
     def is_reachable(self) -> bool:
-        """Quick connectivity probe — returns True if the API responds to GET /."""
+        """Quick connectivity probe — True if GET /api/v1/healthz responds."""
         try:
             with self._client() as c:
-                r = c.get("/", timeout=3.0)
+                r = c.get("/api/v1/healthz", timeout=3.0)
             return r.status_code < 500
         except httpx.TransportError:
             return False
