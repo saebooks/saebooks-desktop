@@ -12,8 +12,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from saebooks_desktop.branding import get_brand
 from saebooks_desktop.cache.sync import SyncEngine
+from saebooks_desktop.i18n import tr
 from saebooks_desktop.licence import load_licence
+from saebooks_desktop.views.cashbook import CashbookView
+from saebooks_desktop.views.dashboard import DashboardView
 from saebooks_desktop.views.accounts import AccountsView
 from saebooks_desktop.views.banking import BankingView
 from saebooks_desktop.views.bill_detail import BillDetailView
@@ -49,7 +53,8 @@ from saebooks_desktop.views.tax_codes import TaxCodesView
 # QWidget on first selection (lazy init to avoid constructing views that
 # need the API before the window is visible).
 _NAV_ITEMS: list[tuple[str, bool]] = [
-    ("Dashboard", False),
+    ("Dashboard", True),
+    ("Cashbook", True),
     ("Contacts", True),
     ("Items", True),
     ("Accounts", True),
@@ -104,7 +109,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("SAE Books")
+        self.setWindowTitle(get_brand().product_name)
         self.setMinimumSize(1024, 768)
 
         self._licence = load_licence()
@@ -134,12 +139,22 @@ class MainWindow(QMainWindow):
         contacts_row: int | None = None
 
         for nav_row, (label, enabled) in enumerate(_NAV_ITEMS):
-            item = QListWidgetItem(label)
+            # _NAV_ITEMS keys stay English (canonical, used for routing);
+            # only the displayed text is translated.
+            item = QListWidgetItem(tr(label))
             if not enabled:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
             self._nav.addItem(item)
 
-            if label == "Contacts" and enabled:
+            if label == "Dashboard" and enabled:
+                dashboard_view = DashboardView()
+                self._dashboard_view = dashboard_view
+                view = dashboard_view
+            elif label == "Cashbook" and enabled:
+                cashbook_view = CashbookView()
+                self._cashbook_view = cashbook_view
+                view = cashbook_view
+            elif label == "Contacts" and enabled:
                 view: QWidget = ContactsView()
                 contacts_row = nav_row
             elif label == "Items" and enabled:
@@ -569,10 +584,11 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self._transport_label)
         self.statusBar().addPermanentWidget(self._tier_label)
 
-        # Select Contacts by default (it's enabled)
-        if contacts_row is not None:
-            self._nav.setCurrentRow(contacts_row)
-            self._stack.setCurrentIndex(self._view_indices[contacts_row])
+        # Select Dashboard by default (row 0 — loads on first show, not here)
+        self._nav.setCurrentRow(0)
+        self._stack.setCurrentIndex(self._view_indices[0])
+        # contacts_row kept for tests that navigate straight to Contacts
+        self._contacts_row = contacts_row
 
         self._update_connection_status()
 

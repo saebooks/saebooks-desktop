@@ -77,22 +77,16 @@ class TestMainWindowSmoke:
                 break
 
     def test_greyed_out_nav_items(self, qapp) -> None:
-        """Dashboard must be disabled.
-
-        Sales, Purchases, Accounts, Journal Entries, Banking, and Payments
-        are now live views and must be enabled.
-        """
+        """Every nav item is now a live view — none may be greyed out."""
         from PySide6.QtCore import Qt
         from saebooks_desktop.main_window import MainWindow
 
         window = MainWindow()
-        disabled_labels = {"Dashboard"}
         for i in range(window._nav.count()):
             item = window._nav.item(i)
-            if item.text() in disabled_labels:
-                assert not (item.flags() & Qt.ItemFlag.ItemIsEnabled), (
-                    f"{item.text()} should be disabled"
-                )
+            assert item.flags() & Qt.ItemFlag.ItemIsEnabled, (
+                f"{item.text()} should be enabled"
+            )
 
     def test_sales_and_purchases_nav_enabled(self, qapp) -> None:
         """Sales and Purchases nav items must be enabled (live views wired in)."""

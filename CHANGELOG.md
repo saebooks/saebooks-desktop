@@ -5,6 +5,37 @@ All notable changes to the SAE Books desktop client will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-18
+
+### Changed
+
+- **Aligned with the pure engine API** (embedded engine UI retired in
+  engine #32). Token validation moved `/api/v1/me` → `/api/v1/auth/me`;
+  `bank-statement-lines` → `bank_statement_lines`; `journal-entries` →
+  `journal_entries`; fixed-asset archive → `DELETE`, depreciate →
+  `post_depreciation`; recurring-invoice run → `generate`; reachability
+  probe `GET /` → `GET /api/v1/healthz`.
+- `X-Company-Id` is now sent on every REST call (multi-company tenants;
+  the engine's "first active company" fallback is unsafe past one company).
+
+### Added
+
+- **Dashboard** — stat tiles (revenue / expenses / net over trailing
+  12 months, AR/AP outstanding) plus a module-health strip from
+  `GET /api/v1/modules/usage`; per-section error isolation.
+- **Cashbook mode** — full native view (summary strip, entries table,
+  add-entry form with direction-filtered categories, delete) against
+  `/api/v1/cashbook/*`; auto-detected via the company's
+  `bookkeeping_mode` and the 409 `cashbook_not_configured` probe.
+- **Module-outage degradation** — `ModuleUnavailableError` parses the
+  engine's three module-unavailable 503 shapes (circuit-breaker
+  problem+json, fail-closed gate, guarded-import stub); affected panels
+  degrade with a banner instead of the whole app going "offline".
+- **tasur variant** — brand registry (`SAEBOOKS_BRAND=tasur`: product
+  name, Estonian-blue placeholder logo, EUR default, käibemaks tax
+  label, `et` default locale) and gettext i18n reusing the saebooks-web
+  ET/RU catalogs (2,684 msgids each) with English fallthrough.
+
 ## [0.1.5] - 2026-05-08
 
 ### Fixed

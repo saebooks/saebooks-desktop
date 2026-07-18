@@ -209,7 +209,16 @@ class APIClient:
 
             company_id = get_company_id()
             if company_id:
-                headers["X-Company-Id"] = company_id
+                # Engine 400s on a malformed header; ignore junk left in
+                # QSettings by tests or older builds.
+                import uuid as _uuid
+
+                try:
+                    _uuid.UUID(company_id)
+                except ValueError:
+                    company_id = ""
+                if company_id:
+                    headers["X-Company-Id"] = company_id
         except Exception:  # noqa: BLE001 — QSettings unavailable in bare tests
             pass
         return headers

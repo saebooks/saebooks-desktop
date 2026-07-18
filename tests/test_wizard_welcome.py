@@ -36,7 +36,9 @@ class TestWelcomePage:
 
         page = WelcomePage()
         # Version string is in subtitle
-        assert "0.1" in page.subTitle()
+        from saebooks_desktop import __version__
+
+        assert __version__ in page.subTitle()
 
     def test_is_complete_always_true(self, qapp) -> None:
         """Welcome page has no required fields — always complete."""
