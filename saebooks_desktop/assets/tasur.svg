@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- tasur placeholder mark: lowercase wordmark on Estonian-blue tile -->
+  <rect width="128" height="128" rx="24" fill="#0072CE"/>
+  <text x="64" y="78" font-family="Inter, sans-serif" font-size="40" font-weight="700"
+        fill="#ffffff" text-anchor="middle">tasur</text>
+</svg>

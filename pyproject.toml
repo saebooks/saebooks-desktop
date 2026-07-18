@@ -32,6 +32,9 @@ saebooks-desktop = "saebooks_desktop.main:main"
 [project.gui-scripts]
 saebooks-desktop-gui = "saebooks_desktop.__main__:main"
 
+[tool.setuptools.package-data]
+saebooks_desktop = ["i18n_data/*/LC_MESSAGES/*.mo", "assets/*.svg"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["saebooks_desktop*"]
