@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=tasur
+Comment=Raamatupidamine sinu arvutis — self-hosted accounting desktop client
+Exec=saebooks-desktop
+Icon=tasur
+Type=Application
+Categories=Office;Finance;
+Keywords=raamatupidamine;arved;accounting;invoicing;books;
+StartupWMClass=tasur
