@@ -244,3 +244,155 @@ class TestIsCashbookCompany:
             pass
         else:
             raise AssertionError("expected ServerOfflineError to propagate")
+
+
+class TestResolveBookkeepingMode:
+    """Mode resolution: company record first, 409 probe fallback, full default."""
+
+    def test_company_record_cashbook_wins_without_probe(self) -> None:
+        from saebooks_desktop.services.cashbook import resolve_bookkeeping_mode
+
+        client = MagicMock()
+        client.get.return_value = {"id": "co-1", "bookkeeping_mode": "cashbook"}
+        assert resolve_bookkeeping_mode(client, company_id="co-1") == "cashbook"
+        # Only the company fetch — no categories probe round-trip.
+        client.get.assert_called_once_with("/api/v1/companies/co-1")
+
+    def test_company_record_full_wins_without_probe(self) -> None:
+        from saebooks_desktop.services.cashbook import resolve_bookkeeping_mode
+
+        client = MagicMock()
+        client.get.return_value = {"id": "co-1", "bookkeeping_mode": "full"}
+        assert resolve_bookkeeping_mode(client, company_id="co-1") == "full"
+        client.get.assert_called_once_with("/api/v1/companies/co-1")
+
+    def test_missing_mode_field_falls_back_to_probe_cashbook(self) -> None:
+        """Schema drift (no bookkeeping_mode) → 409 probe decides."""
+        from saebooks_desktop.services.cashbook import resolve_bookkeeping_mode
+
+        client = MagicMock()
+        client.get.side_effect = [
+            {"id": "co-1"},          # company record without the field
+            _SAMPLE_CATEGORIES,       # categories probe succeeds → cashbook
+        ]
+        assert resolve_bookkeeping_mode(client, company_id="co-1") == "cashbook"
+
+    def test_missing_mode_field_falls_back_to_probe_409_full(self) -> None:
+        from saebooks_desktop.services.cashbook import resolve_bookkeeping_mode
+
+        client = MagicMock()
+        client.get.side_effect = [
+            {"id": "co-1"},
+            APIError("cashbook_not_configured", status_code=409),
+        ]
+        assert resolve_bookkeeping_mode(client, company_id="co-1") == "full"
+
+    def test_company_fetch_error_falls_back_to_probe(self) -> None:
+        from saebooks_desktop.services.cashbook import resolve_bookkeeping_mode
+
+        client = MagicMock()
+        client.get.side_effect = [
+            APIError("not found", status_code=404),
+            _SAMPLE_CATEGORIES,
+        ]
+        assert resolve_bookkeeping_mode(client, company_id="co-1") == "cashbook"
+
+    def test_server_offline_defaults_full_without_probe(self) -> None:
+        """Offline: the probe would fail too — one round-trip, full default."""
+        from saebooks_desktop.services.cashbook import resolve_bookkeeping_mode
+
+        client = MagicMock()
+        client.get.side_effect = ServerOfflineError("offline")
+        assert resolve_bookkeeping_mode(client, company_id="co-1") == "full"
+        client.get.assert_called_once()
+
+    def test_no_company_id_uses_probe(self) -> None:
+        from unittest.mock import patch
+
+        from saebooks_desktop.services.cashbook import resolve_bookkeeping_mode
+
+        client = MagicMock()
+        client.get.return_value = _SAMPLE_CATEGORIES
+        with patch(
+            "saebooks_desktop.services.settings.get_company_id", return_value=""
+        ):
+            assert resolve_bookkeeping_mode(client) == "cashbook"
+        client.get.assert_called_once_with("/api/v1/cashbook/categories")
+
+    def test_everything_failing_defaults_full(self) -> None:
+        from saebooks_desktop.services.cashbook import resolve_bookkeeping_mode
+
+        client = MagicMock()
+        client.get.side_effect = APIError("boom", status_code=500)
+        assert resolve_bookkeeping_mode(client, company_id="co-1") == "full"
+
+
+class TestSetBookkeepingModeService:
+    """POST /api/v1/companies/{id}/bookkeeping-mode wrapper."""
+
+    def test_upgrade_posts_mode_full(self) -> None:
+        from saebooks_desktop.services.cashbook import set_bookkeeping_mode
+
+        client = MagicMock()
+        client.post.return_value = {
+            "company_id": "co-1",
+            "bookkeeping_mode": "full",
+            "cashbook_default_bank_account_id": None,
+            "version": 3,
+        }
+        result = set_bookkeeping_mode(client, "co-1", "full")
+        client.post.assert_called_once_with(
+            "/api/v1/companies/co-1/bookkeeping-mode", json={"mode": "full"}
+        )
+        assert result["bookkeeping_mode"] == "full"
+
+    def test_downgrade_posts_mode_cashbook(self) -> None:
+        from saebooks_desktop.services.cashbook import set_bookkeeping_mode
+
+        client = MagicMock()
+        client.post.return_value = {"bookkeeping_mode": "cashbook"}
+        set_bookkeeping_mode(client, "co-1", "cashbook")
+        client.post.assert_called_once_with(
+            "/api/v1/companies/co-1/bookkeeping-mode", json={"mode": "cashbook"}
+        )
+
+    def test_bank_account_id_included_when_given(self) -> None:
+        from saebooks_desktop.services.cashbook import set_bookkeeping_mode
+
+        client = MagicMock()
+        client.post.return_value = {}
+        set_bookkeeping_mode(client, "co-1", "cashbook", bank_account_id="ba-9")
+        client.post.assert_called_once_with(
+            "/api/v1/companies/co-1/bookkeeping-mode",
+            json={"mode": "cashbook", "bank_account_id": "ba-9"},
+        )
+
+    def test_invalid_mode_raises_value_error(self) -> None:
+        from saebooks_desktop.services.cashbook import set_bookkeeping_mode
+
+        client = MagicMock()
+        try:
+            set_bookkeeping_mode(client, "co-1", "hybrid")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("expected ValueError for invalid mode")
+        client.post.assert_not_called()
+
+    def test_engine_refusal_propagates_with_message(self) -> None:
+        """422 on open AR — the engine's message must reach the caller."""
+        from saebooks_desktop.services.cashbook import set_bookkeeping_mode
+
+        client = MagicMock()
+        client.post.side_effect = APIError(
+            "POST .../bookkeeping-mode returned 422: cannot downgrade with "
+            "open accounts receivable",
+            status_code=422,
+        )
+        try:
+            set_bookkeeping_mode(client, "co-1", "cashbook")
+        except APIError as exc:
+            assert "open accounts receivable" in str(exc)
+            assert exc.status_code == 422
+        else:
+            raise AssertionError("expected APIError to propagate")

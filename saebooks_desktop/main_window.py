@@ -1,4 +1,20 @@
-"""SAE Books main window — Command Centre-style sidebar navigation."""
+"""SAE Books main window — Command Centre-style sidebar navigation.
+
+Navigation is mode-driven (adjudicated navigation verdict, revising PoC
+decision #16): the sidebar branches on the selected company's
+``bookkeeping_mode`` — never on licence tier.
+
+* Cashbook mode: Cashbook / Reports (cashbook summary) / Settings plus
+  exactly one "Full accounting →" doorway (explainer + lossless upgrade).
+  Contacts is omitted — cashbook entries are contactless.
+* Full mode: the full accounting nav with NO Cashbook item; "Switch to
+  cashbook mode" lives in the Settings view.
+
+The mode comes off the company record (``resolve_bookkeeping_mode`` —
+409-probe fallback only, not a per-render round-trip). A company switch
+or mode flip re-renders the nav via ``apply_bookkeeping_mode`` /
+``refresh_company_context``.
+"""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Slot
@@ -16,8 +32,11 @@ from saebooks_desktop.branding import get_brand
 from saebooks_desktop.cache.sync import SyncEngine
 from saebooks_desktop.i18n import tr
 from saebooks_desktop.licence import load_licence
+from saebooks_desktop.services.cashbook import resolve_bookkeeping_mode
 from saebooks_desktop.views.cashbook import CashbookView
+from saebooks_desktop.views.cashbook_report import CashbookReportView
 from saebooks_desktop.views.dashboard import DashboardView
+from saebooks_desktop.views.full_accounting_door import FullAccountingDoorView
 from saebooks_desktop.views.accounts import AccountsView
 from saebooks_desktop.views.banking import BankingView
 from saebooks_desktop.views.bill_detail import BillDetailView
@@ -48,13 +67,16 @@ from saebooks_desktop.views.search_view import SearchView
 from saebooks_desktop.views.settings_view import SettingsView
 from saebooks_desktop.views.tax_codes import TaxCodesView
 
-# Nav items: (label, enabled, view_factory_or_None)
-# Disabled entries show greyed out; factories are callables that create a
-# QWidget on first selection (lazy init to avoid constructing views that
-# need the API before the window is visible).
-_NAV_ITEMS: list[tuple[str, bool]] = [
+# All views built into the stack: (canonical key, enabled). Every view is
+# constructed once (lazy data loading happens on first show); which of them
+# appear in the sidebar is decided per bookkeeping mode by _FULL_MODE_NAV /
+# _CASHBOOK_MODE_NAV below. Canonical keys stay English (used for routing);
+# only displayed text is translated.
+_ALL_VIEWS: list[tuple[str, bool]] = [
     ("Dashboard", True),
     ("Cashbook", True),
+    ("Cashbook Reports", True),
+    ("Full Accounting", True),
     ("Contacts", True),
     ("Items", True),
     ("Accounts", True),
@@ -77,6 +99,24 @@ _NAV_ITEMS: list[tuple[str, bool]] = [
     ("Tax Codes", True),
     ("Search", True),
     ("Settings", True),
+]
+
+# Keys that only appear in cashbook-mode navigation.
+_CASHBOOK_ONLY_KEYS = {"Cashbook", "Cashbook Reports", "Full Accounting"}
+
+# Nav models: (display label, canonical view key) per bookkeeping mode.
+# Full mode = full accounting nav, NO Cashbook primary item (the downgrade
+# action lives in Settings). Cashbook mode = Cashbook / Reports (cashbook
+# summary) / Settings + exactly ONE "Full accounting →" doorway; Contacts
+# is omitted (cashbook entries are contactless).
+_FULL_MODE_NAV: list[tuple[str, str]] = [
+    (key, key) for key, _enabled in _ALL_VIEWS if key not in _CASHBOOK_ONLY_KEYS
+]
+_CASHBOOK_MODE_NAV: list[tuple[str, str]] = [
+    ("Cashbook", "Cashbook"),
+    ("Reports", "Cashbook Reports"),
+    ("Settings", "Settings"),
+    ("Full accounting →", "Full Accounting"),
 ]
 
 
@@ -134,18 +174,20 @@ class MainWindow(QMainWindow):
 
         self._stack = QStackedWidget()
 
-        # Build nav + stack in sync
+        # Resolve the selected company's bookkeeping mode once — nav
+        # branches on it (never on tier). Company record first; the 409
+        # cashbook_not_configured probe is fallback only.
+        from saebooks_desktop.services.api_client import APIClient as _APIClient
+
+        self._bookkeeping_mode = resolve_bookkeeping_mode(_APIClient())
+
+        # Build every view into the stack; the sidebar is populated from
+        # the mode's nav model afterwards (_apply_nav).
+        self._stack_index_by_key: dict[str, int] = {}  # canonical key -> stack_index
         self._view_indices: dict[int, int] = {}  # nav_row -> stack_index
-        contacts_row: int | None = None
+        self._nav_row_by_key: dict[str, int] = {}  # canonical key -> nav_row
 
-        for nav_row, (label, enabled) in enumerate(_NAV_ITEMS):
-            # _NAV_ITEMS keys stay English (canonical, used for routing);
-            # only the displayed text is translated.
-            item = QListWidgetItem(tr(label))
-            if not enabled:
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-            self._nav.addItem(item)
-
+        for label, enabled in _ALL_VIEWS:
             if label == "Dashboard" and enabled:
                 dashboard_view = DashboardView()
                 self._dashboard_view = dashboard_view
@@ -154,9 +196,17 @@ class MainWindow(QMainWindow):
                 cashbook_view = CashbookView()
                 self._cashbook_view = cashbook_view
                 view = cashbook_view
+            elif label == "Cashbook Reports" and enabled:
+                cashbook_report_view = CashbookReportView()
+                self._cashbook_report_view = cashbook_report_view
+                view = cashbook_report_view
+            elif label == "Full Accounting" and enabled:
+                door_view = FullAccountingDoorView()
+                door_view.upgraded.connect(self._on_upgraded_to_full)
+                self._full_accounting_door = door_view
+                view = door_view
             elif label == "Contacts" and enabled:
                 view: QWidget = ContactsView()
-                contacts_row = nav_row
             elif label == "Items" and enabled:
                 view = ItemsView()
             elif label == "Accounts" and enabled:
@@ -358,16 +408,12 @@ class MainWindow(QMainWindow):
                     bill_id: str,
                     win: "MainWindow" = self,
                 ) -> None:
-                    for r, (lbl, _en) in enumerate(_NAV_ITEMS):
-                        if lbl == "Purchases":
-                            win._nav.setCurrentRow(r)
-                            win._stack.setCurrentIndex(win._view_indices[r])
-                            # Show the bill in the purchases stack
-                            if hasattr(win, "_bill_detail_view"):
-                                win._bill_detail_view.load(bill_id)
-                                # Detail is index 1 in the purchases stack
-                                win._purchases_stack.setCurrentIndex(1)
-                            break
+                    if win._navigate_to_key("Purchases"):
+                        # Show the bill in the purchases stack
+                        if hasattr(win, "_bill_detail_view"):
+                            win._bill_detail_view.load(bill_id)
+                            # Detail is index 1 in the purchases stack
+                            win._purchases_stack.setCurrentIndex(1)
 
                 po_detail_view.bill_opened.connect(_on_bill_opened)
 
@@ -548,12 +594,15 @@ class MainWindow(QMainWindow):
             elif label == "Settings" and enabled:
                 settings_view = SettingsView()
                 settings_view.reconnect_requested.connect(self._on_reconnect_requested)
+                settings_view.bookkeeping_mode_changed.connect(
+                    self._on_bookkeeping_mode_changed
+                )
+                self._settings_view = settings_view
                 view = settings_view
             else:
                 view = _PlaceholderView(label)
 
-            stack_index = self._stack.addWidget(view)
-            self._view_indices[nav_row] = stack_index
+            self._stack_index_by_key[label] = self._stack.addWidget(view)
 
         self._nav.currentRowChanged.connect(self._on_nav_changed)
         root_layout.addWidget(self._nav)
@@ -584,11 +633,10 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self._transport_label)
         self.statusBar().addPermanentWidget(self._tier_label)
 
-        # Select Dashboard by default (row 0 — loads on first show, not here)
-        self._nav.setCurrentRow(0)
-        self._stack.setCurrentIndex(self._view_indices[0])
-        # contacts_row kept for tests that navigate straight to Contacts
-        self._contacts_row = contacts_row
+        # Populate the sidebar for the resolved mode and select the first
+        # item (Dashboard in full mode, Cashbook in cashbook mode — loads
+        # on first show, not here).
+        self._apply_nav()
 
         self._update_connection_status()
 
@@ -613,6 +661,75 @@ class MainWindow(QMainWindow):
         stack_index = self._view_indices.get(row)
         if stack_index is not None:
             self._stack.setCurrentIndex(stack_index)
+
+    def _nav_model(self) -> list[tuple[str, str]]:
+        """Return the (display label, canonical key) nav model for the mode."""
+        if self._bookkeeping_mode == "cashbook":
+            return _CASHBOOK_MODE_NAV
+        return _FULL_MODE_NAV
+
+    def _apply_nav(self) -> None:
+        """(Re)populate the sidebar from the current bookkeeping mode.
+
+        Every view stays in the stack; only the sidebar entries and the
+        nav_row → stack_index routing change. Selects the first item.
+        """
+        model = self._nav_model()
+
+        self._nav.blockSignals(True)
+        self._nav.clear()
+        self._view_indices = {}
+        self._nav_row_by_key = {}
+        for nav_row, (display, key) in enumerate(model):
+            self._nav.addItem(QListWidgetItem(tr(display)))
+            self._view_indices[nav_row] = self._stack_index_by_key[key]
+            self._nav_row_by_key[key] = nav_row
+        self._nav.blockSignals(False)
+
+        self._nav.setCurrentRow(0)
+        self._stack.setCurrentIndex(self._view_indices[0])
+
+    def _navigate_to_key(self, key: str) -> bool:
+        """Select the nav row for *key* if it exists in the current mode."""
+        nav_row = self._nav_row_by_key.get(key)
+        if nav_row is None:
+            return False
+        self._nav.setCurrentRow(nav_row)
+        self._stack.setCurrentIndex(self._view_indices[nav_row])
+        return True
+
+    # ------------------------------------------------------------------
+    # Bookkeeping mode (mode-driven navigation)
+    # ------------------------------------------------------------------
+
+    def apply_bookkeeping_mode(self, mode: str) -> None:
+        """Re-render the navigation for *mode* ("cashbook" or "full")."""
+        if mode not in ("cashbook", "full"):
+            return
+        self._bookkeeping_mode = mode
+        self._apply_nav()
+
+    def refresh_company_context(self) -> None:
+        """Re-resolve the company's bookkeeping mode and re-render the nav.
+
+        Call after a company switch — navigation branches on the newly
+        selected company's ``bookkeeping_mode``.
+        """
+        from saebooks_desktop.services.api_client import APIClient
+
+        self.apply_bookkeeping_mode(resolve_bookkeeping_mode(APIClient()))
+
+    @Slot()
+    def _on_upgraded_to_full(self) -> None:
+        """Cashbook company upgraded via the Full accounting doorway."""
+        if hasattr(self, "_settings_view"):
+            self._settings_view._general_tab.set_mode("full")
+        self.apply_bookkeeping_mode("full")
+
+    @Slot(str)
+    def _on_bookkeeping_mode_changed(self, mode: str) -> None:
+        """SettingsView flipped the mode (full → cashbook downgrade)."""
+        self.apply_bookkeeping_mode(mode)
 
     def start_sync(self) -> None:
         """Start the background sync engine.  Call this after ``show()``."""
@@ -695,14 +812,12 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_search_shortcut(self) -> None:
-        """Navigate to the Search view and focus the search field."""
-        for nav_row, (label, _enabled) in enumerate(_NAV_ITEMS):
-            if label == "Search":
-                self._nav.setCurrentRow(nav_row)
-                self._stack.setCurrentIndex(self._view_indices[nav_row])
-                if hasattr(self, "_search_view"):
-                    self._search_view.focus_search()
-                break
+        """Navigate to the Search view and focus the search field.
+
+        No-op in cashbook mode — Search is not part of that nav model.
+        """
+        if self._navigate_to_key("Search") and hasattr(self, "_search_view"):
+            self._search_view.focus_search()
 
     @Slot(str, str)
     def _on_search_result_selected(self, result_type: str, result_id: str) -> None:
@@ -720,11 +835,7 @@ class MainWindow(QMainWindow):
         nav_label = _type_to_nav.get(result_type.lower())
         if nav_label is None:
             return
-        for nav_row, (label, _enabled) in enumerate(_NAV_ITEMS):
-            if label == nav_label:
-                self._nav.setCurrentRow(nav_row)
-                self._stack.setCurrentIndex(self._view_indices[nav_row])
-                break
+        self._navigate_to_key(nav_label)
 
     def closeEvent(self, event: object) -> None:  # type: ignore[override]
         """Stop the sync engine cleanly before closing."""

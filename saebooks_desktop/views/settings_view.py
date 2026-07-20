@@ -1,7 +1,10 @@
 """Settings view — Company Settings with a QTabWidget.
 
 Tabs:
-    General    — company name, ABN, ACN, financial year start, base currency
+    General    — company name, ABN, ACN, financial year start, base currency,
+                 bookkeeping mode (with "Switch to cashbook mode" in full mode
+                 per the adjudicated navigation verdict — the downgrade action
+                 lives here, not in primary navigation)
     Tax        — default tax codes for sales and purchases
     Connection — server URL, current user, Disconnect button
     About      — product info, version, edition, links
@@ -10,6 +13,9 @@ Signals:
     reconnect_requested() — emitted when the user clicks "Disconnect".
                             MainWindow should clear QSettings and re-show the
                             first-run wizard when it receives this signal.
+    bookkeeping_mode_changed(str) — emitted with the new mode ("cashbook" or
+                            "full") after a successful mode switch; MainWindow
+                            re-renders the navigation.
 """
 from __future__ import annotations
 
@@ -78,11 +84,25 @@ class _GeneralTab(QWidget):
         self._currency_edit = QLineEdit("AUD")
         self._currency_edit.setReadOnly(True)
 
+        # Bookkeeping mode row — the downgrade action lives in Settings
+        # (adjudicated navigation verdict), never in primary navigation.
+        self._mode_label = QLabel("—")
+        mode_row = QWidget()
+        mode_layout = QHBoxLayout(mode_row)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.addWidget(self._mode_label)
+        self._switch_to_cashbook_btn = QPushButton("Switch to cashbook mode")
+        self._switch_to_cashbook_btn.setObjectName("switch_to_cashbook_btn")
+        self._switch_to_cashbook_btn.setVisible(False)
+        mode_layout.addWidget(self._switch_to_cashbook_btn)
+        mode_layout.addStretch()
+
         form.addRow("Company name:", self._name_edit)
         form.addRow("ABN:", self._abn_edit)
         form.addRow("ACN:", self._acn_edit)
         form.addRow("Financial year start:", self._fy_start_combo)
         form.addRow("Base currency:", self._currency_edit)
+        form.addRow("Bookkeeping:", mode_row)
 
         self._save_btn = QPushButton("Save")
 
@@ -104,6 +124,16 @@ class _GeneralTab(QWidget):
         month = data.get("financial_year_start_month")
         if month and 1 <= int(month) <= 12:
             self._fy_start_combo.setCurrentIndex(int(month) - 1)
+        self.set_mode(str(data.get("bookkeeping_mode") or "full").lower())
+
+    def set_mode(self, mode: str) -> None:
+        """Update the bookkeeping-mode label and switch-button visibility."""
+        self._mode_label.setText(
+            "Cashbook (simplified)" if mode == "cashbook" else "Full accounting"
+        )
+        # The downgrade action only makes sense from full mode; cashbook
+        # companies upgrade via the "Full accounting →" nav doorway.
+        self._switch_to_cashbook_btn.setVisible(mode == "full")
 
     def current_data(self) -> dict[str, Any]:
         return {
@@ -276,9 +306,12 @@ class SettingsView(QWidget):
         reconnect_requested(): emitted when the user clicks "Disconnect" on
             the Connection tab.  MainWindow handles this by clearing
             QSettings and re-showing the first-run wizard.
+        bookkeeping_mode_changed(str): emitted with the new mode after a
+            successful cashbook/full switch; MainWindow re-renders the nav.
     """
 
     reconnect_requested = Signal()
+    bookkeeping_mode_changed = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -307,6 +340,9 @@ class SettingsView(QWidget):
         self._general_tab._save_btn.clicked.connect(self._on_save_general)
         self._tax_tab._save_btn.clicked.connect(self._on_save_tax)
         self._connection_tab.disconnect_clicked.connect(self._on_disconnect)
+        self._general_tab._switch_to_cashbook_btn.clicked.connect(
+            self._on_switch_to_cashbook
+        )
 
         self._load_all()
 
@@ -392,6 +428,49 @@ class SettingsView(QWidget):
             QMessageBox.critical(self, "Offline", "Cannot save — server is offline.")
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Error", f"Save failed:\n{exc}")
+
+    def _on_switch_to_cashbook(self) -> None:
+        """Downgrade full → cashbook via the engine's bookkeeping-mode endpoint.
+
+        Engine-gated on zero open AR (``downgrade_full_to_cashbook``) —
+        a refusal comes back as a 422 whose message is surfaced verbatim.
+        """
+        from saebooks_desktop.services.api_client import APIError
+        from saebooks_desktop.services.cashbook import set_bookkeeping_mode
+
+        if not self._company_id:
+            QMessageBox.warning(self, "No company", "No company is selected.")
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Switch to cashbook mode",
+            "Switch this company to the simplified cashbook mode?\n\n"
+            "Your full ledger is preserved — the cashbook is a simpler "
+            "window onto the same journal. The engine will refuse the "
+            "switch while any invoices remain unpaid (open accounts "
+            "receivable must be zero).",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            result = set_bookkeeping_mode(self._client, self._company_id, "cashbook")
+        except ServerOfflineError:
+            QMessageBox.critical(self, "Offline", "Cannot switch — server is offline.")
+            return
+        except APIError as exc:
+            # Surface the engine's error message on refusal (e.g. open AR).
+            QMessageBox.critical(self, "Switch refused", str(exc))
+            return
+
+        mode = str(result.get("bookkeeping_mode") or "cashbook")
+        self._general_tab.set_mode(mode)
+        QMessageBox.information(
+            self, "Switched", "This company is now in cashbook mode."
+        )
+        self.bookkeeping_mode_changed.emit(mode)
 
     def _on_disconnect(self) -> None:
         from saebooks_desktop.services.settings import (

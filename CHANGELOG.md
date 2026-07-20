@@ -5,6 +5,43 @@ All notable changes to the SAE Books desktop client will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-20
+
+### Changed
+
+- **Mode-driven navigation** (adjudicated navigation verdict — revises
+  PoC decision #16). The sidebar now branches on the selected company's
+  `bookkeeping_mode`, never on licence tier:
+  - *Cashbook mode*: primary nav is Cashbook (entries), Reports
+    (cashbook summary), Settings, plus exactly one "Full accounting →"
+    doorway. Contacts is omitted — cashbook entries are contactless.
+  - *Full mode*: the full accounting nav with NO Cashbook primary item;
+    "Switch to cashbook mode" lives in Settings → General.
+  - Mode resolution reads `bookkeeping_mode` off the company record;
+    the 409 `cashbook_not_configured` probe is fallback only (no
+    per-render round-trip). A company switch or mode flip re-renders
+    the nav (`refresh_company_context` / `apply_bookkeeping_mode`).
+    Per-panel degrade behaviour is unchanged.
+
+### Added
+
+- **Full accounting doorway** — explainer view ("you own a complete
+  double-entry ledger — your entries are real journal entries; switch
+  on the full suite anytime, nothing is re-keyed") with a confirmed
+  upgrade action against
+  `POST /api/v1/companies/{id}/bookkeeping-mode` (`mode=full`,
+  the engine's `upgrade_cashbook_to_full`).
+- **Switch to cashbook mode** in Settings → General (full mode only) —
+  calls the same endpoint with `mode=cashbook`
+  (`downgrade_full_to_cashbook`); the engine gates on zero open AR and
+  its 422 refusal message is surfaced verbatim.
+- **Cashbook Reports view** — date-ranged rendering of
+  `GET /api/v1/cashbook/summary` (totals + by-category table) backing
+  the Reports nav item in cashbook mode.
+- **Brand `tax_label` in cashbook summary strips** — "GST" (saebooks)
+  vs "käibemaks" (tasur) collected/paid labels on the Cashbook view and
+  the Cashbook Reports view (closes a deferred item from 0.2.0).
+
 ## [0.2.0] - 2026-07-18
 
 ### Changed

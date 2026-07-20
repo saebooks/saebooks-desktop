@@ -5,8 +5,9 @@ company 409s on every cashbook endpoint — see
 ``services.cashbook.is_cashbook_company``).
 
 Layout:
-  - Summary strip: three QLabels (Money in / Money out / Net) from
-    ``GET /api/v1/cashbook/summary``.
+  - Summary strip: QLabels (Money in / Money out / Net / tax collected /
+    tax paid) from ``GET /api/v1/cashbook/summary``. The consumption-tax
+    wording follows the brand's ``tax_label`` ("GST" vs "käibemaks").
   - Entries table (QTableWidget, read-only), newest first. Columns:
     Date | Direction | Category | Description | Amount.
   - "Add entry" button toggles an inline form (date, direction, category
@@ -46,6 +47,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from saebooks_desktop.branding import get_brand
 from saebooks_desktop.services.api_client import (
     APIClient,
     APIError,
@@ -72,11 +74,11 @@ _DIRECTION_LABELS = {"income": "In", "expense": "Out"}
 
 
 def _extract_summary(s: dict[str, Any]) -> dict[str, str]:
-    """Defensively pull income/expense/net out of a summary response.
+    """Defensively pull income/expense/net/GST out of a summary response.
 
     Tries the real engine field names (``income_total``/``expense_total``/
-    ``net``) first, then a few plausible alternates so a schema drift
-    doesn't blank the strip outright.
+    ``net``/``gst_collected``/``gst_paid``) first, then a few plausible
+    alternates so a schema drift doesn't blank the strip outright.
     """
     income = (
         s.get("income_total")
@@ -93,7 +95,15 @@ def _extract_summary(s: dict[str, Any]) -> dict[str, str]:
         or "0"
     )
     net = s.get("net") or s.get("net_total") or "0"
-    return {"income": str(income), "expense": str(expense), "net": str(net)}
+    gst_collected = s.get("gst_collected") or s.get("tax_collected") or "0"
+    gst_paid = s.get("gst_paid") or s.get("tax_paid") or "0"
+    return {
+        "income": str(income),
+        "expense": str(expense),
+        "net": str(net),
+        "gst_collected": str(gst_collected),
+        "gst_paid": str(gst_paid),
+    }
 
 
 class CashbookView(QWidget):
@@ -134,10 +144,22 @@ class CashbookView(QWidget):
         summary_layout = QHBoxLayout(summary_widget)
         summary_layout.setContentsMargins(8, 4, 8, 4)
 
+        # Consumption-tax wording comes off the brand ("GST" for saebooks,
+        # "käibemaks" for tasur) — company-derived values would win if the
+        # summary ever carries its own label, but today this is UI chrome.
+        self._tax_label_word = get_brand().tax_label
         self._money_in_label = QLabel("Money in: —")
         self._money_out_label = QLabel("Money out: —")
         self._net_label = QLabel("Net: —")
-        for label in (self._money_in_label, self._money_out_label, self._net_label):
+        self._gst_collected_label = QLabel(f"{self._tax_label_word} collected: —")
+        self._gst_paid_label = QLabel(f"{self._tax_label_word} paid: —")
+        for label in (
+            self._money_in_label,
+            self._money_out_label,
+            self._net_label,
+            self._gst_collected_label,
+            self._gst_paid_label,
+        ):
             summary_layout.addWidget(label)
 
         spacer = QWidget()
@@ -275,6 +297,12 @@ class CashbookView(QWidget):
         self._money_in_label.setText(f"Money in: {values['income']}")
         self._money_out_label.setText(f"Money out: {values['expense']}")
         self._net_label.setText(f"Net: {values['net']}")
+        self._gst_collected_label.setText(
+            f"{self._tax_label_word} collected: {values['gst_collected']}"
+        )
+        self._gst_paid_label.setText(
+            f"{self._tax_label_word} paid: {values['gst_paid']}"
+        )
 
     def _populate_category_combo(self) -> None:
         self._category_combo.blockSignals(True)

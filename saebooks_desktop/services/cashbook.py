@@ -15,7 +15,11 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from saebooks_desktop.services.api_client import APIClient, APIError
+from saebooks_desktop.services.api_client import (
+    APIClient,
+    APIError,
+    ServerOfflineError,
+)
 
 
 def list_entries(
@@ -112,6 +116,10 @@ def is_cashbook_company(client: APIClient) -> bool:
     A full-mode company answers the cashbook endpoints with a 409
     ``cashbook_not_configured``; probe with ``list_categories`` (cheapest,
     no query params) and interpret the result.
+
+    Fallback path only — prefer reading ``bookkeeping_mode`` off the
+    company record (see ``resolve_bookkeeping_mode``) so mode resolution
+    doesn't cost a probe round-trip per render.
     """
     try:
         list_categories(client)
@@ -120,3 +128,75 @@ def is_cashbook_company(client: APIClient) -> bool:
             return False
         raise
     return True
+
+
+def resolve_bookkeeping_mode(client: APIClient, company_id: str | None = None) -> str:
+    """Resolve the active company's bookkeeping mode: ``"cashbook"`` or ``"full"``.
+
+    Resolution order (adjudicated navigation verdict — nav branches on the
+    company's ``bookkeeping_mode``, never on tier):
+
+    1. The company record's ``bookkeeping_mode`` field
+       (``GET /api/v1/companies/{id}``) — the app already holds/fetches
+       the company object; this is the primary source.
+    2. The 409 ``cashbook_not_configured`` probe (``is_cashbook_company``)
+       — fallback only, for schema drift or a missing company id.
+    3. ``"full"`` — default when the server is unreachable or both paths
+       fail (full-mode nav degrades per-panel; cashbook panels would 409).
+    """
+    if company_id is None:
+        from saebooks_desktop.services.settings import get_company_id
+
+        company_id = get_company_id()
+
+    if company_id:
+        try:
+            company = client.get(f"/api/v1/companies/{company_id}")
+        except ServerOfflineError:
+            # Server unreachable — the probe would fail too; don't burn a
+            # second round-trip.
+            return "full"
+        except Exception:  # noqa: BLE001 — 404/schema drift → fallback probe
+            company = None
+        if isinstance(company, dict):
+            mode = str(company.get("bookkeeping_mode") or "").strip().lower()
+            if mode in ("cashbook", "full"):
+                return mode
+
+    try:
+        return "cashbook" if is_cashbook_company(client) else "full"
+    except Exception:  # noqa: BLE001 — offline etc.
+        return "full"
+
+
+def set_bookkeeping_mode(
+    client: APIClient,
+    company_id: str,
+    mode: str,
+    bank_account_id: str | None = None,
+) -> dict[str, Any]:
+    """Flip the company between cashbook and full bookkeeping modes.
+
+    ``POST /api/v1/companies/{id}/bookkeeping-mode`` with
+    ``{"mode": "cashbook"|"full"}``. The engine picks the direction:
+
+    * ``mode="full"`` → ``upgrade_cashbook_to_full`` — lossless; cashbook
+      entries already are real journal entries.
+    * ``mode="cashbook"`` → ``downgrade_full_to_cashbook`` — engine-gated
+      on zero open AR (422 with the offending invoices in the message).
+      ``bank_account_id`` is required by the engine only when the company
+      has no pre-existing ``cashbook_default_bank_account_id``.
+
+    Idempotent: same-mode calls return current state with a 200.
+
+    Raises:
+        ServerOfflineError: if the server is unreachable.
+        APIError: 422 on engine refusal — ``str(exc)`` carries the
+            engine's error message; surface it to the user verbatim.
+    """
+    if mode not in ("cashbook", "full"):
+        raise ValueError(f"Invalid bookkeeping mode: {mode!r}")
+    body: dict[str, Any] = {"mode": mode}
+    if bank_account_id:
+        body["bank_account_id"] = bank_account_id
+    return client.post(f"/api/v1/companies/{company_id}/bookkeeping-mode", json=body)

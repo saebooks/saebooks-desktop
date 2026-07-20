@@ -200,7 +200,13 @@ class TestCashbookViewSummary:
         from saebooks_desktop.views.cashbook import _extract_summary
 
         result = _extract_summary(_SAMPLE_SUMMARY)
-        assert result == {"income": "150.00", "expense": "40.00", "net": "110.00"}
+        assert result == {
+            "income": "150.00",
+            "expense": "40.00",
+            "net": "110.00",
+            "gst_collected": "13.64",
+            "gst_paid": "3.64",
+        }
 
     def test_extract_summary_falls_back_to_alternate_keys(self, qapp) -> None:
         from saebooks_desktop.views.cashbook import _extract_summary
@@ -208,7 +214,27 @@ class TestCashbookViewSummary:
         result = _extract_summary(
             {"money_in": "10.00", "money_out": "5.00", "net": "5.00"}
         )
-        assert result == {"income": "10.00", "expense": "5.00", "net": "5.00"}
+        assert result == {
+            "income": "10.00",
+            "expense": "5.00",
+            "net": "5.00",
+            "gst_collected": "0",
+            "gst_paid": "0",
+        }
+
+    def test_summary_strip_uses_brand_tax_label(self, qapp) -> None:
+        """The GST strip labels carry the brand tax_label (GST vs käibemaks)."""
+        view = _make_view(qapp, summary=_SAMPLE_SUMMARY)
+        # Default brand is saebooks → "GST"
+        assert view._gst_collected_label.text() == "GST collected: 13.64"
+        assert view._gst_paid_label.text() == "GST paid: 3.64"
+
+    def test_summary_strip_tasur_tax_label(self, qapp, monkeypatch) -> None:
+        """SAEBOOKS_BRAND=tasur switches the strip wording to käibemaks."""
+        monkeypatch.setenv("SAEBOOKS_BRAND", "tasur")
+        view = _make_view(qapp, summary=_SAMPLE_SUMMARY)
+        assert view._gst_collected_label.text() == "käibemaks collected: 13.64"
+        assert view._gst_paid_label.text() == "käibemaks paid: 3.64"
 
 
 # ---------------------------------------------------------------------------
