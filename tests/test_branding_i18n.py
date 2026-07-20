@@ -62,3 +62,50 @@ class TestI18n:
         assert i18n.get_locale() in ("et", "en", "ru")
         env_backup = os.environ.get("SAEBOOKS_LOCALE")
         assert env_backup is None
+
+
+class TestBakedBrand:
+    """The brand baked into a packaged artifact (brand.cfg beside a frozen exe)."""
+
+    def test_not_frozen_returns_empty(self) -> None:
+        from saebooks_desktop.branding import _baked_brand_id
+
+        # Test processes are never frozen — baked lookup must be inert.
+        assert _baked_brand_id() == ""
+
+    def test_frozen_reads_brand_cfg(self, monkeypatch, tmp_path) -> None:
+        import sys
+
+        from saebooks_desktop import branding
+
+        exe = tmp_path / "saebooks-desktop.exe"
+        exe.write_bytes(b"")
+        (tmp_path / "brand.cfg").write_text("tasur\n", encoding="utf-8")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", str(exe))
+        assert branding._baked_brand_id() == "tasur"
+        assert branding.get_brand().id == "tasur"
+
+    def test_frozen_without_cfg_returns_empty(self, monkeypatch, tmp_path) -> None:
+        import sys
+
+        from saebooks_desktop.branding import _baked_brand_id
+
+        exe = tmp_path / "saebooks-desktop.exe"
+        exe.write_bytes(b"")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", str(exe))
+        assert _baked_brand_id() == ""
+
+    def test_env_outranks_baked(self, monkeypatch, tmp_path) -> None:
+        import sys
+
+        from saebooks_desktop import branding
+
+        exe = tmp_path / "saebooks-desktop.exe"
+        exe.write_bytes(b"")
+        (tmp_path / "brand.cfg").write_text("tasur", encoding="utf-8")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", str(exe))
+        monkeypatch.setenv("SAEBOOKS_BRAND", "saebooks")
+        assert branding.get_brand().id == "saebooks"

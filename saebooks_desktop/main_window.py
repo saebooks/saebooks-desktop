@@ -631,7 +631,13 @@ class MainWindow(QMainWindow):
         self._tier_label = QLabel(f"Licence: {tier}")
         self.statusBar().addWidget(self._conn_label, 1)
         self.statusBar().addPermanentWidget(self._transport_label)
-        self.statusBar().addPermanentWidget(self._tier_label)
+        # Community is the product, not a tier to advertise: the licence
+        # badge only appears when a real (verified, non-community) licence
+        # is loaded. Community builds show no licence chrome at all.
+        if self._licence.stub or self._licence.tier == "community":
+            self._tier_label.hide()
+        else:
+            self.statusBar().addPermanentWidget(self._tier_label)
 
         # Populate the sidebar for the resolved mode and select the first
         # item (Dashboard in full mode, Cashbook in cashbook mode — loads

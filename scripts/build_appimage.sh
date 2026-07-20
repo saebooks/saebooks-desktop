@@ -2,14 +2,19 @@
 # Build a self-contained AppImage for SAE Books desktop.
 #
 # Usage:
-#   ./scripts/build_appimage.sh [--arch amd64|arm64]
+#   ./scripts/build_appimage.sh [--arch amd64|arm64] [--brand saebooks|tasur]
 #
 # Requirements (installed by CI or manually):
 #   pip install "python-appimage>=1.2"   # or `uv run --with python-appimage>=1.2 ...`
 #   libfuse2 on the build host (for AppImage runtime).
 #
 # Outputs:
-#   dist/SAEBooks-<version>-<arch>.AppImage
+#   dist/SAEBooks-<version>-<arch>.AppImage   (--brand saebooks, default)
+#   dist/tasur-<version>-<arch>.AppImage      (--brand tasur)
+#
+# The brand is baked into the AppImage entrypoint as an exported
+# SAEBOOKS_BRAND env var, so each artifact is permanently its brand
+# (saebooks_desktop.branding: env > baked > QSettings > default).
 #
 # How it works:
 #   python-appimage `build app` consumes an "appdir" containing
@@ -28,12 +33,32 @@ DIST_DIR="${REPO_ROOT}/dist"
 # Parse args
 # --------------------------------------------------------------------------
 ARCH="amd64"
+BRAND="saebooks"
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --arch) ARCH="$2"; shift 2 ;;
-        *)      echo "Unknown arg: $1"; exit 1 ;;
+        --arch)  ARCH="$2";  shift 2 ;;
+        --brand) BRAND="$2"; shift 2 ;;
+        *)       echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
+
+# Per-brand artifact facts. NAME_PREFIX drives the .desktop Name= field,
+# which python-appimage uses as the output filename prefix.
+case "${BRAND}" in
+    saebooks)
+        NAME_PREFIX="SAEBooks"
+        DESKTOP_SRC="saebooks-desktop.desktop"
+        ICON_SRC="saebooks-desktop.svg"
+        ICON_DEST="saebooks-desktop.svg"
+        ;;
+    tasur)
+        NAME_PREFIX="tasur"
+        DESKTOP_SRC="tasur.desktop"
+        ICON_SRC="tasur.svg"
+        ICON_DEST="tasur.svg"
+        ;;
+    *)  echo "Unsupported brand: ${BRAND} (saebooks|tasur)"; exit 1 ;;
+esac
 
 # Normalise to AppImage convention (x86_64 / aarch64).
 case "${ARCH}" in
@@ -52,7 +77,7 @@ mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 print(mod.__version__)
 ")"
-echo "Building SAEBooks ${VERSION} AppImage for ${APPIMAGE_ARCH}"
+echo "Building ${NAME_PREFIX} ${VERSION} AppImage for ${APPIMAGE_ARCH} (brand: ${BRAND})"
 
 mkdir -p "${DIST_DIR}"
 
@@ -94,25 +119,25 @@ if [[ -z "${WHEEL_PATH}" || ! -f "${WHEEL_PATH}" ]]; then
 fi
 echo "    wheel: ${WHEEL_PATH}"
 
-# Copy the static appimage assets.
-cp "${DEPLOY_DIR}/entrypoint.sh"       "${STAGE_DIR}/entrypoint.sh"
+# Copy the static appimage assets, baking the brand into the entrypoint
+# (inserted right after `set -e` so it precedes the exec line).
+sed "/^set -e/a export SAEBOOKS_BRAND=${BRAND}" \
+    "${DEPLOY_DIR}/entrypoint.sh" > "${STAGE_DIR}/entrypoint.sh"
 chmod +x "${STAGE_DIR}/entrypoint.sh"
 
 # Build a desktop file with a Name= that produces a clean output filename
 # (python-appimage uses the desktop's Name= field as the AppImage prefix).
 # Also bake the version in so we can rename predictably.
-DESKTOP_NAME="SAEBooks-${VERSION}"
+DESKTOP_NAME="${NAME_PREFIX}-${VERSION}"
 sed -E "s/^Name=.*/Name=${DESKTOP_NAME}/" \
-    "${DEPLOY_DIR}/saebooks-desktop.desktop" \
-    > "${STAGE_DIR}/saebooks-desktop.desktop"
+    "${DEPLOY_DIR}/${DESKTOP_SRC}" \
+    > "${STAGE_DIR}/${DESKTOP_SRC}"
 
 # Icon (SVG preferred; PNG also accepted by python-appimage).
-if [[ -f "${DEPLOY_DIR}/saebooks-desktop.svg" ]]; then
-    cp "${DEPLOY_DIR}/saebooks-desktop.svg" "${STAGE_DIR}/saebooks-desktop.svg"
-elif [[ -f "${DEPLOY_DIR}/saebooks-desktop.png" ]]; then
-    cp "${DEPLOY_DIR}/saebooks-desktop.png" "${STAGE_DIR}/saebooks-desktop.png"
+if [[ -f "${DEPLOY_DIR}/${ICON_SRC}" ]]; then
+    cp "${DEPLOY_DIR}/${ICON_SRC}" "${STAGE_DIR}/${ICON_DEST}"
 else
-    echo "ERROR: no icon at ${DEPLOY_DIR}/saebooks-desktop.{svg,png}" >&2
+    echo "ERROR: no icon at ${DEPLOY_DIR}/${ICON_SRC}" >&2
     exit 1
 fi
 
@@ -156,7 +181,7 @@ if [[ -z "${SRC_APPIMAGE}" || ! -f "${SRC_APPIMAGE}" ]]; then
     exit 1
 fi
 
-DEST_APPIMAGE="${DIST_DIR}/SAEBooks-${VERSION}-${APPIMAGE_ARCH}.AppImage"
+DEST_APPIMAGE="${DIST_DIR}/${NAME_PREFIX}-${VERSION}-${APPIMAGE_ARCH}.AppImage"
 mv "${SRC_APPIMAGE}" "${DEST_APPIMAGE}"
 chmod +x "${DEST_APPIMAGE}"
 
