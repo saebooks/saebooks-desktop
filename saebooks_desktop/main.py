@@ -7,9 +7,12 @@ import sys
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    from saebooks_desktop.branding import get_brand
+
+    brand = get_brand()
     parser = argparse.ArgumentParser(
         prog="saebooks-desktop",
-        description="SAE Books — self-hosted accounting desktop client",
+        description=f"{brand.product_name} — {brand.tagline} desktop client",
     )
     parser.add_argument(
         "--api-url",

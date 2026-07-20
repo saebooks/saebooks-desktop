@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QWizard
 
+from saebooks_desktop.branding import get_brand
 from saebooks_desktop.wizard.pages.company_select import CompanySelectPage
 from saebooks_desktop.wizard.pages.done import DonePage
 from saebooks_desktop.wizard.pages.server_connect import ServerConnectPage
@@ -26,7 +27,7 @@ class FirstRunWizard(QWizard):
 
     def __init__(self, parent: object = None) -> None:
         super().__init__(parent)  # type: ignore[arg-type]
-        self.setWindowTitle("SAE Books — Setup")
+        self.setWindowTitle(f"{get_brand().product_name} — Setup")
         self.setMinimumSize(520, 380)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
 

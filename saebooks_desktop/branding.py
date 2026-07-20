@@ -3,8 +3,12 @@
 One binary, two skins. The brand decides product naming, the default
 locale, the default currency shown before a company is loaded, and the
 word used for consumption tax in UI chrome ("GST" vs "käibemaks").
-Selection order: ``SAEBOOKS_BRAND`` env var, then QSettings
-``brand/id``, then the built-in default (``saebooks``).
+Selection order: ``SAEBOOKS_BRAND`` env var, then the brand baked into
+a packaged artifact (``brand.cfg`` beside a frozen executable — the MSI
+path; the AppImage bakes an env export into its entrypoint instead),
+then QSettings ``brand/id``, then the built-in default (``saebooks``).
+A branded artifact therefore stays its brand regardless of what another
+build on the same machine persisted to QSettings.
 
 Company-derived values (base_currency, jurisdiction) always win over
 brand defaults once a company is loaded — the brand only covers chrome
@@ -13,7 +17,9 @@ shown before/outside a company context.
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 _BRAND_QSETTINGS_KEY = "brand/id"
 
@@ -29,6 +35,7 @@ class Brand:
     default_currency: str
     tax_label: str
     logo_filename: str
+    tagline: str = "self-hosted accounting"
 
 
 BRANDS: dict[str, Brand] = {
@@ -40,6 +47,7 @@ BRANDS: dict[str, Brand] = {
         default_currency="AUD",
         tax_label="GST",
         logo_filename="saebooks-desktop.svg",
+        tagline="self-hosted accounting",
     ),
     "tasur": Brand(
         id="tasur",
@@ -49,15 +57,36 @@ BRANDS: dict[str, Brand] = {
         default_currency="EUR",
         tax_label="käibemaks",
         logo_filename="tasur.svg",
+        tagline="self-hosted accounting",
     ),
 }
 
 _DEFAULT_BRAND_ID = "saebooks"
 
 
+def _baked_brand_id() -> str:
+    """Return the brand baked into a packaged artifact, or ''.
+
+    cx_Freeze (MSI) builds drop a one-line ``brand.cfg`` next to the frozen
+    executable; the AppImage instead exports ``SAEBOOKS_BRAND`` from its
+    entrypoint, so it never reaches this fallback.
+    """
+    if not getattr(sys, "frozen", False):
+        return ""
+    try:
+        cfg = Path(sys.executable).parent / "brand.cfg"
+        if cfg.exists():
+            return cfg.read_text(encoding="utf-8").strip().lower()
+    except OSError:
+        pass
+    return ""
+
+
 def get_brand() -> Brand:
-    """Return the active Brand (env > QSettings > default)."""
+    """Return the active Brand (env > baked artifact > QSettings > default)."""
     brand_id = os.environ.get("SAEBOOKS_BRAND", "").strip().lower()
+    if not brand_id:
+        brand_id = _baked_brand_id()
     if not brand_id:
         try:
             from PySide6.QtCore import QSettings

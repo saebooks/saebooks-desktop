@@ -25,11 +25,20 @@ class TestWelcomePage:
         page = WelcomePage()
         assert page is not None
 
-    def test_title_contains_sae_books(self, qapp) -> None:
+    def test_title_contains_brand_product_name(self, qapp) -> None:
+        from saebooks_desktop.branding import get_brand
         from saebooks_desktop.wizard.pages.welcome import WelcomePage
 
         page = WelcomePage()
-        assert "SAE Books" in page.title()
+        assert get_brand().product_name in page.title()
+
+    def test_title_follows_tasur_brand(self, qapp, monkeypatch) -> None:
+        monkeypatch.setenv("SAEBOOKS_BRAND", "tasur")
+        from saebooks_desktop.wizard.pages.welcome import WelcomePage
+
+        page = WelcomePage()
+        assert "tasur" in page.title()
+        assert "SAE Books" not in page.title()
 
     def test_subtitle_contains_version(self, qapp) -> None:
         from saebooks_desktop.wizard.pages.welcome import WelcomePage

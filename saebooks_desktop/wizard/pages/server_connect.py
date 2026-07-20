@@ -71,9 +71,13 @@ class ServerConnectPage(QWizardPage):
 
     def __init__(self, parent: object = None) -> None:
         super().__init__(parent)  # type: ignore[arg-type]
-        self.setTitle("Connect to server")
+        from saebooks_desktop.branding import get_brand
+
+        product = get_brand().product_name
+        self.setTitle("Connect to your server")
         self.setSubTitle(
-            "Choose how this desktop client will reach the SAE Books API."
+            f"Where does your {product} server run? "
+            "If someone set it up for you, they will have given you an address."
         )
 
         layout = QVBoxLayout(self)
@@ -84,13 +88,13 @@ class ServerConnectPage(QWizardPage):
         # Mode radios
         # ------------------------------------------------------------------
         self._radio_local = QRadioButton(
-            "Local Docker (this machine, default for self-host bundle)"
+            "On this computer (default — the server runs on this machine)"
         )
         self._radio_cloud = QRadioButton(
-            "Cloud / hosted URL (REST only — recommended for public servers)"
+            "Online server — I have a web address (https://…)"
         )
         self._radio_lan = QRadioButton(
-            "LAN server (REST + gRPC available, gRPC preferred)"
+            "Server on my home or office network (advanced)"
         )
         self._radio_local.setChecked(True)
 

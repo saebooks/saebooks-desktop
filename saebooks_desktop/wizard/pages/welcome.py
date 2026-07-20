@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from saebooks_desktop import __version__ as _VERSION  # type: ignore[attr-defined]
+from saebooks_desktop.branding import get_brand
 
 
 def _version_str() -> str:
@@ -23,9 +24,10 @@ class WelcomePage(QWizardPage):
 
     def __init__(self, parent: object = None) -> None:
         super().__init__(parent)  # type: ignore[arg-type]
-        self.setTitle("Welcome to SAE Books")
+        brand = get_brand()
+        self.setTitle(f"Welcome to {brand.product_name}")
         self.setSubTitle(
-            f"Version {_version_str()}  —  self-hosted AU-compliant accounting"
+            f"Version {_version_str()}  —  {brand.tagline}"
         )
 
         layout = QVBoxLayout(self)
@@ -33,8 +35,8 @@ class WelcomePage(QWizardPage):
         layout.setSpacing(12)
 
         body = QLabel(
-            "This wizard will help you connect to your SAE Books server\n"
-            "and sign in to your account.\n\n"
+            f"This wizard will help you connect to your {brand.product_name} "
+            "server\nand sign in to your account.\n\n"
             "Click Next to get started."
         )
         body.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
