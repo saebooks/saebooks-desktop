@@ -44,6 +44,23 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Guard: v0.3.0 shipped without the VC++ runtime and hard-crashed on every
+REM clean Windows machine ("VCRUNTIME140.dll was not found"). The frozen
+REM directory bdist_msi packaged is under build\exe.*; refuse to hand over an
+REM MSI whose payload lacks the runtime.
+set "VCRT_FOUND="
+for /f "delims=" %%F in ('dir /b /s build\exe.*\vcruntime140.dll 2^>nul') do (
+    set "VCRT_FOUND=%%F"
+)
+if not defined VCRT_FOUND (
+    echo.
+    echo ERROR: vcruntime140.dll is NOT in the frozen build directory.
+    echo The MSI would be dead on arrival on a clean Windows machine.
+    echo Check include_msvcr / the CPython install in deploy\windows\setup_freeze.py.
+    exit /b 1
+)
+echo VC++ runtime present: %VCRT_FOUND%
+
 REM cx_Freeze names the file <name>-<version>-<platform>.msi inside dist\.
 REM Rename to our canonical <Brand>-<version>-x64.msi convention.
 for /f "delims=" %%F in ('dir /b /s dist\*.msi 2^>nul') do (

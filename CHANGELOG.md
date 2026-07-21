@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows client was dead on arrival on a clean machine.** The MSI shipped
+  no Visual C++ runtime, so `saebooks-desktop.exe` crashed with
+  "VCRUNTIME140.dll was not found" before any window appeared on any Windows
+  box without `vc_redist` installed. The build now sets cx_Freeze
+  `include_msvcr` **and** copies `vcruntime140*.dll` / `msvcp140*.dll`
+  explicitly from the CPython install; `scripts/build_msi.bat` fails the
+  build outright if the runtime is missing from the frozen directory.
+- **"On this computer" could never find the one-click server.** The wizard
+  probed only the Docker bundle's ports (8042 REST / 50051 gRPC), so the
+  two Windows artifacts the website offers could not pair with each other in
+  the default mode. It now probes the one-click server (18961 REST / 18962
+  gRPC) **first**, falls back to the Docker ports, and says which one it
+  found.
+- **Raw winsock errors on first run.** A fresh install with no server showed
+  `[WinError 10061] … actively refused it`. Replaced with plain-English
+  guidance plus the download link (saebooks.com.au/download.html), and the
+  advanced tab now names the one-click ports instead of speaking only of
+  "gRPC host:port" / "REST URL (fallback)".
+- **x64 app installed into `C:\Program Files (x86)\`.** The MSI now targets
+  `[ProgramFiles64Folder]`.
+
+### Changed
+
+- **Installer payload cut by roughly 70%.** Qt is frozen down to the modules
+  the client actually imports (QtCore/QtGui/QtWidgets, plus QtSvg for the
+  icon fallback) instead of the whole of PySide6 — WebEngine, Quick, 3D,
+  Charts, Multimedia and friends are gone. `grpc_tools` (the protoc
+  compiler, a build-time dev tool) is excluded and demoted from a runtime
+  dependency to a dev extra; the gRPC stubs are generated and committed.
+  Reference Linux freeze: 608 MB → 163 MB.
+- **Installer flow.** A branded welcome + AGPL page is now the first screen
+  (the directory picker used to be), and the final page offers a "Launch on
+  finish" checkbox.
+
 ## [0.4.0] - 2026-07-22
 
 ### Added

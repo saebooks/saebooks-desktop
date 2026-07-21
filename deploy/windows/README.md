@@ -49,10 +49,29 @@ bakes it into the artifact as a one-line `brand.cfg` installed beside the
 frozen executable; `saebooks_desktop.branding` reads that at runtime with
 precedence env var > baked artifact > QSettings > default.
 
+## What the installer does (v0.4)
+
+- **Ships the VC++ runtime.** `include_msvcr=True` plus an explicit copy of
+  `vcruntime140*.dll` / `msvcp140*.dll` from the CPython install. v0.3.0
+  shipped without them and hard-crashed on every clean Windows machine with
+  "VCRUNTIME140.dll was not found" before any UI appeared. `build_msi.bat`
+  now **fails the build** if `vcruntime140.dll` is missing from the frozen
+  directory — never ship an MSI that skips this check.
+- **Installs to `[ProgramFiles64Folder]`.** `ProgramFilesFolder` resolves to
+  `Program Files (x86)` even inside an x64 package.
+- **Start-menu + desktop shortcuts**, both carrying the brand icon (the exe
+  has the `.ico` as a resource; the installer and Add/Remove Programs use
+  the same file).
+- **Welcome/AGPL first page** (`license_file`, generated RTF) before the
+  directory picker, and a **"Launch on finish" checkbox** on the last page.
+- **Qt is trimmed to the modules actually imported** (QtCore/QtGui/QtWidgets
+  +QtSvg). Listing `PySide6` in `packages` pulls in WebEngine, Quick, 3D,
+  Charts and friends — that was ~90% of the 252 MB v0.3.0 payload.
+  `grpc_tools` (protoc, a build-time compiler) is excluded outright; the
+  gRPC stubs in `saebooks_desktop/grpc_gen/` are generated and committed.
+
 ## Not done yet (known gaps)
 
-- No `.ico` icons — the Executable's `icon=` line is commented out; the
-  MSI installs with the default icon. Convert the brand SVGs before 1.0.
 - The MSI is unsigned. Windows SmartScreen will warn on download/run
   ("Windows protected your PC → More info → Run anyway") until the MSI is
   signed with a code-signing certificate (EV cert removes the warning

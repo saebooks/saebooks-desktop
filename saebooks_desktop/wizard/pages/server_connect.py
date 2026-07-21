@@ -2,10 +2,12 @@
 
 Three transport modes, each suited to a different deployment shape:
 
-1. **Local Docker** (default)
-   The user is running the bundled compose stack on the same machine.
-   We auto-fill ``http://localhost:8042`` for REST and ``localhost:50051``
-   for gRPC, prefer gRPC, and just probe both ports.
+1. **On this computer** (default)
+   The user is running a server on the same machine.  Two shapes exist:
+   the one-click server (18961 REST / 18962 gRPC) and the Docker community
+   bundle (8042 REST / 50051 gRPC).  We probe the one-click ports first —
+   that is the artifact the website hands a new user — then fall back to
+   the Docker ports, prefer gRPC, and report which one was found.
 
 2. **Cloud / Remote URL**
    The user is connecting to a hosted server reached over a public URL.
@@ -57,10 +59,26 @@ from PySide6.QtWidgets import (
 
 logger = logging.getLogger(__name__)
 
-# Defaults for the local-docker mode.
-_LOCAL_REST_URL = "http://localhost:8042"
-_LOCAL_GRPC_HOST = "localhost"
-_LOCAL_GRPC_PORT = 50051
+# Candidates probed, in order, by the "On this computer" mode.
+#
+# The one-click server (a single downloadable program, the path the website
+# promotes) listens on 18960 web / 18961 REST / 18962 gRPC.  The Docker
+# community bundle listens on 8042 REST / 50051 gRPC.  Probe the one-click
+# ports FIRST — that is what a new user will actually be running — and fall
+# back to the Docker ports for people running the compose stack.
+_LOCAL_CANDIDATES: tuple[tuple[str, str, str, int], ...] = (
+    ("one-click server", "http://localhost:18961", "localhost", 18962),
+    ("Docker bundle", "http://localhost:8042", "localhost", 50051),
+)
+
+# The candidate assumed before any probe has run (also what the Advanced tab
+# hints at, and what an offline "Next" would persist).
+_LOCAL_REST_URL = _LOCAL_CANDIDATES[0][1]
+_LOCAL_GRPC_HOST = _LOCAL_CANDIDATES[0][2]
+_LOCAL_GRPC_PORT = _LOCAL_CANDIDATES[0][3]
+
+# Where a user with no server at all should go.
+_DOWNLOAD_URL = "https://saebooks.com.au/download.html"
 
 # Defaults for the LAN mode — the user edits these.
 _LAN_DEFAULT_REST = "http://<server>:8042"
@@ -91,6 +109,10 @@ class ServerConnectPage(QWizardPage):
         self._radio_local = QRadioButton(
             "On this computer (default — the server runs on this machine)"
         )
+        self._radio_local.setToolTip(
+            "Looks for the one-click server (ports 18961/18962) first, "
+            "then the Docker bundle (ports 8042/50051)."
+        )
         self._radio_cloud = QRadioButton(
             "Online server — I have a web address (https://…)"
         )
@@ -120,10 +142,9 @@ class ServerConnectPage(QWizardPage):
         self._no_server_note = QLabel(
             f"<b>Don't have a server yet?</b> {product} keeps your books in "
             "a small, free server program — one file, no setup. "
-            "<a href=\"https://github.com/saebooks/saebooks/releases\">"
-            "Download the one-click server</a>, run it on this computer, "
-            "then choose “On this computer” above and press "
-            "Test Connection."
+            f'<a href="{_DOWNLOAD_URL}">Download the one-click server</a>, '
+            "run it on this computer, then choose “On this computer” above "
+            "and press Test Connection."
         )
         self._no_server_note.setWordWrap(True)
         self._no_server_note.setOpenExternalLinks(True)
@@ -156,19 +177,21 @@ class ServerConnectPage(QWizardPage):
         lan_layout.setContentsMargins(20, 4, 0, 4)
 
         self._lan_grpc_input = QLineEdit()
-        self._lan_grpc_input.setPlaceholderText("books.lan:50051")
-        lan_layout.addRow("gRPC host:port:", self._lan_grpc_input)
+        self._lan_grpc_input.setPlaceholderText("books.lan:18962")
+        lan_layout.addRow("Fast connection (name:port):", self._lan_grpc_input)
 
         self._lan_rest_input = QLineEdit()
-        self._lan_rest_input.setPlaceholderText("http://books.lan:8042")
-        lan_layout.addRow("REST URL (fallback):", self._lan_rest_input)
+        self._lan_rest_input.setPlaceholderText("http://books.lan:18961")
+        lan_layout.addRow("Web address (backup):", self._lan_rest_input)
 
         self._lan_note = QLabel(
-            "💡  gRPC is significantly faster than REST for list and "
-            "live-update operations on the LAN — typically 3–5× lower "
-            "latency and uses long-lived streaming for change events. "
-            "You'll feel the difference on large ledgers. We recommend "
-            "leaving gRPC as the preferred transport."
+            "💡  Use the name or address of the computer running the server. "
+            "The one-click server uses ports <b>18962</b> (fast) and "
+            "<b>18961</b> (web address); the Docker bundle uses "
+            "<b>50051</b> and <b>8042</b>. The fast connection (gRPC) is "
+            "typically 3–5× faster than the web address for lists and "
+            "live updates, so we recommend leaving it switched on — the "
+            "web address is used automatically if it isn't available."
         )
         self._lan_note.setWordWrap(True)
         self._lan_note.setStyleSheet(
@@ -196,6 +219,9 @@ class ServerConnectPage(QWizardPage):
         # State
         # ------------------------------------------------------------------
         self._connection_ok = False
+        # Index into _LOCAL_CANDIDATES chosen by the last successful probe.
+        # Before any probe we assume the one-click server (index 0).
+        self._local_choice = 0
 
         # Connections
         self._radio_local.toggled.connect(self._on_mode_changed)
@@ -232,7 +258,7 @@ class ServerConnectPage(QWizardPage):
         """Return the REST URL that will be persisted (without trailing slash)."""
         mode = self.selected_mode()
         if mode == "local":
-            return _LOCAL_REST_URL
+            return _LOCAL_CANDIDATES[self._local_choice][1]
         if mode == "cloud":
             return self._url_input.text().strip().rstrip("/")
         # LAN
@@ -244,7 +270,8 @@ class ServerConnectPage(QWizardPage):
         if mode == "cloud":
             return None
         if mode == "local":
-            return (_LOCAL_GRPC_HOST, _LOCAL_GRPC_PORT)
+            _, _, host, port = _LOCAL_CANDIDATES[self._local_choice]
+            return (host, port)
         # LAN
         raw = self._lan_grpc_input.text().strip()
         if not raw:
@@ -267,6 +294,7 @@ class ServerConnectPage(QWizardPage):
         self._cloud_frame.setVisible(mode == "cloud")
         self._lan_frame.setVisible(mode == "lan")
         self._connection_ok = False
+        self._local_choice = 0
         self._status_label.setText("")
         self.completeChanged.emit()
 
@@ -277,6 +305,11 @@ class ServerConnectPage(QWizardPage):
 
     def _on_test_clicked(self) -> None:
         mode = self.selected_mode()
+
+        if mode == "local":
+            self._test_local()
+            return
+
         rest_url = self.resolved_url()
 
         # Sanity-check the inputs first.
@@ -333,6 +366,72 @@ class ServerConnectPage(QWizardPage):
         self._test_btn.setEnabled(True)
         self.completeChanged.emit()
 
+    def _test_local(self) -> None:
+        """Probe every known local server shape, one-click ports first.
+
+        The website hands new users the one-click server (18961/18962); the
+        Docker community bundle (8042/50051) is the second shape.  Trying
+        only one of them is how v0.3.0 shipped a client that could never
+        pair with the server the same page promoted.
+        """
+        self._test_btn.setEnabled(False)
+        self._set_status(None, "Looking for a server on this computer…")
+
+        found = None
+        for index, (label, rest_url, _host, _port) in enumerate(_LOCAL_CANDIDATES):
+            rest_ok, _msg = self._probe_rest(rest_url)
+            if rest_ok:
+                found = (index, label)
+                break
+
+        if found is None:
+            self._local_choice = 0
+            self._connection_ok = False
+            self._set_status(
+                False,
+                "No {product} server found on this computer. Start the "
+                "one-click server (or the Docker bundle) and press Test "
+                "Connection again — the link below has the download.".format(
+                    product=self._product_name()
+                ),
+            )
+            self._test_btn.setEnabled(True)
+            self.completeChanged.emit()
+            return
+
+        self._local_choice, label = found
+        rest_url = self.resolved_url()
+        target = self.resolved_grpc_target()
+        grpc_ok, grpc_msg = (False, "")
+        if target is not None:
+            grpc_ok, grpc_msg = self._probe_grpc(target[0], target[1])
+
+        if grpc_ok:
+            status = (
+                f"Found your {label} on this computer — connected on the "
+                "fast connection."
+            )
+        else:
+            status = (
+                f"Found your {label} on this computer ({rest_url}). The "
+                f"fast connection isn't available ({grpc_msg or 'no response'}), "
+                "so the web address will be used instead."
+            )
+
+        self._set_status(True, status)
+        self._connection_ok = True
+        self._save_settings("local", rest_url, grpc_ok)
+        self._test_btn.setEnabled(True)
+        self.completeChanged.emit()
+
+    def _product_name(self) -> str:
+        try:
+            from saebooks_desktop.branding import get_brand
+
+            return get_brand().product_name
+        except Exception:  # noqa: BLE001
+            return "SAE Books"
+
     # ------------------------------------------------------------------
     # Probes
     # ------------------------------------------------------------------
@@ -346,9 +445,20 @@ class ServerConnectPage(QWizardPage):
             with httpx.Client(timeout=5.0) as c:
                 r = c.get(healthz)
         except httpx.TransportError as exc:
-            return False, f"Could not reach server: {exc}"
+            # Never surface a raw winsock/errno string to the user — v0.3.0
+            # showed "[WinError 10061] … actively refused it" on a fresh
+            # install with no server, which reads as a crash, not guidance.
+            logger.info("REST probe failed for %s: %s", url, exc)
+            return False, (
+                f"No server answered at {url}. Check the address, and that "
+                "the server program is running."
+            )
         except Exception as exc:  # noqa: BLE001
-            return False, f"Unexpected error: {exc}"
+            logger.info("REST probe error for %s: %s", url, exc)
+            return False, (
+                f"Could not check {url}. Please confirm the address is "
+                "correct and try again."
+            )
 
         if r.status_code == 200:
             return True, "REST OK."

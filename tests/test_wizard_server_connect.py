@@ -134,13 +134,14 @@ class TestServerConnectPageStructure:
 
 
 class TestServerConnectLocalMode:
-    def test_resolved_url_is_localhost(self, qapp) -> None:
+    def test_resolved_url_defaults_to_oneclick_port(self, qapp) -> None:
+        """Before any probe, "On this computer" assumes the one-click server."""
         page = _make_page()
-        assert page.resolved_url() == "http://localhost:8042"
+        assert page.resolved_url() == "http://localhost:18961"
 
-    def test_resolved_grpc_target_is_localhost_50051(self, qapp) -> None:
+    def test_resolved_grpc_target_defaults_to_oneclick_port(self, qapp) -> None:
         page = _make_page()
-        assert page.resolved_grpc_target() == ("localhost", 50051)
+        assert page.resolved_grpc_target() == ("localhost", 18962)
 
     def test_test_connection_success_marks_complete(self, qapp) -> None:
         page = _make_page()
@@ -175,7 +176,7 @@ class TestServerConnectLocalMode:
             get_server_url,
             get_transport_mode,
         )
-        assert get_server_url() == "http://localhost:8042"
+        assert get_server_url() == "http://localhost:18961"
         assert get_transport_mode() == "local"
         assert get_prefer_grpc() is True
 
@@ -276,7 +277,9 @@ class TestServerConnectCloudMode:
 
         assert not page.isComplete()
         text = page._status_label.text().lower()
-        assert "could not reach" in text or "error" in text
+        assert "no server answered" in text or "could not check" in text
+        # Never leak a raw winsock/errno string into the UI.
+        assert "winerror" not in text
 
     def test_empty_url_rejected(self, qapp) -> None:
         page = _make_page()
@@ -303,7 +306,8 @@ class TestServerConnectLanMode:
         page = _make_page()
         page._radio_lan.setChecked(True)
         page._lan_grpc_input.setText("books.lan")
-        assert page.resolved_grpc_target() == ("books.lan", 50051)
+        # Bare hostname → the one-click gRPC port, matching the placeholder.
+        assert page.resolved_grpc_target() == ("books.lan", 18962)
 
     def test_lan_grpc_target_none_when_blank(self, qapp) -> None:
         page = _make_page()
@@ -380,3 +384,101 @@ class TestServerConnectLanMode:
         page._lan_grpc_input.setText("books.lan:50051")
         page._on_test_clicked()
         assert not page.isComplete()
+
+
+# ============================================================================
+# "On this computer" — port discovery (one-click first, Docker fallback)
+# ============================================================================
+
+
+def _httpx_mock_for(reachable_urls: set[str]):
+    """Build a mock httpx module whose GET succeeds only for *reachable_urls*.
+
+    URLs are matched on the base (everything before ``/api/v1/healthz``).
+    """
+    mock_httpx = MagicMock()
+    mock_httpx.TransportError = ConnectionError
+
+    def _get(url, *a, **kw):
+        base = url.split("/api/v1/healthz")[0]
+        if base not in reachable_urls:
+            raise ConnectionError(
+                "[WinError 10061] No connection could be made because the "
+                "target machine actively refused it"
+            )
+        resp = MagicMock()
+        resp.status_code = 200
+        return resp
+
+    client = MagicMock()
+    client.__enter__ = MagicMock(return_value=client)
+    client.__exit__ = MagicMock(return_value=False)
+    client.get.side_effect = _get
+    mock_httpx.Client.return_value = client
+    return mock_httpx
+
+
+class TestLocalPortDiscovery:
+    def test_finds_oneclick_server_on_18961(self, qapp) -> None:
+        page = _make_page()
+        with patch(
+            "saebooks_desktop.wizard.pages.server_connect.httpx",
+            _httpx_mock_for({"http://localhost:18961"}),
+        ), patch("saebooks_desktop.services.grpc_client.GrpcClient") as MockGrpc:
+            MockGrpc.return_value.is_reachable.return_value = True
+            page._on_test_clicked()
+
+        assert page.isComplete()
+        assert page.resolved_url() == "http://localhost:18961"
+        assert page.resolved_grpc_target() == ("localhost", 18962)
+        assert "one-click" in page._status_label.text().lower()
+
+    def test_falls_back_to_docker_ports(self, qapp) -> None:
+        """With only the Docker bundle up, the client must still pair."""
+        page = _make_page()
+        with patch(
+            "saebooks_desktop.wizard.pages.server_connect.httpx",
+            _httpx_mock_for({"http://localhost:8042"}),
+        ), patch("saebooks_desktop.services.grpc_client.GrpcClient") as MockGrpc:
+            MockGrpc.return_value.is_reachable.return_value = True
+            page._on_test_clicked()
+
+        assert page.isComplete()
+        assert page.resolved_url() == "http://localhost:8042"
+        assert page.resolved_grpc_target() == ("localhost", 50051)
+        assert "docker" in page._status_label.text().lower()
+
+    def test_oneclick_wins_when_both_are_up(self, qapp) -> None:
+        page = _make_page()
+        with patch(
+            "saebooks_desktop.wizard.pages.server_connect.httpx",
+            _httpx_mock_for({"http://localhost:18961", "http://localhost:8042"}),
+        ), patch("saebooks_desktop.services.grpc_client.GrpcClient") as MockGrpc:
+            MockGrpc.return_value.is_reachable.return_value = True
+            page._on_test_clicked()
+
+        assert page.resolved_url() == "http://localhost:18961"
+
+    def test_no_server_shows_friendly_copy_not_winerror(self, qapp) -> None:
+        """A fresh install with nothing running must not surface winsock text."""
+        page = _make_page()
+        with patch(
+            "saebooks_desktop.wizard.pages.server_connect.httpx",
+            _httpx_mock_for(set()),
+        ):
+            page._on_test_clicked()
+
+        text = page._status_label.text()
+        assert not page.isComplete()
+        assert "winerror" not in text.lower()
+        assert "10061" not in text
+        assert "no" in text.lower() and "server" in text.lower()
+
+    def test_no_server_note_links_to_download_page(self, qapp) -> None:
+        page = _make_page()
+        assert "saebooks.com.au/download.html" in page._no_server_note.text()
+
+    def test_advanced_note_mentions_oneclick_ports(self, qapp) -> None:
+        page = _make_page()
+        text = page._lan_note.text()
+        assert "18962" in text and "18961" in text

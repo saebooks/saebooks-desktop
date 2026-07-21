@@ -13,13 +13,16 @@ dependencies = [
     "httpx>=0.27",
     "platformdirs>=4.0",
     "grpcio>=1.60",
-    "grpcio-tools>=1.60",
 ]
 
 [project.optional-dependencies]
+# grpcio-tools ships protoc — a build-time compiler used to regenerate the
+# stubs in saebooks_desktop/grpc_gen/. It is NOT a runtime dependency and
+# must never end up inside a shipped client (~40 MB of dev tooling).
 dev = [
     "pytest>=8.0",
     "pytest-qt>=4.4",
+    "grpcio-tools>=1.60",
 ]
 packaging = [
     "python-appimage>=1.2",
