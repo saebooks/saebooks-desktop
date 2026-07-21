@@ -18,8 +18,8 @@ this once, the first time it starts, and remembers your answer.
 
 **Download** the file for your product:
 
-- SAE Books: `SAEBooks-0.3.0-x86_64.AppImage`
-- tasur: `tasur-0.3.0-x86_64.AppImage`
+- SAE Books: `SAEBooks-0.4.0-x86_64.AppImage`
+- tasur: `tasur-0.4.0-x86_64.AppImage`
 
 An AppImage is a program in a single file — nothing to install.
 
@@ -59,27 +59,49 @@ in the app file.
 
 ## Windows
 
-A Windows installer (`.msi` — download, double-click, Next-Next-Finish) is
-prepared but **not yet published**: it has to be built and tested on a
-Windows machine, which hasn't happened yet. It will appear here when it is
-real. Until then Windows users can use the web app in their browser at the
-same server address.
+**Download** the installer for your product:
+
+- SAE Books: `SAEBooks-0.4.0-x64.msi`
+- tasur: `tasur-0.4.0-x64.msi`
+
+1. Double-click the downloaded `.msi`.
+2. Windows will likely show a blue **"Windows protected your PC"**
+   (SmartScreen) screen. This is expected: SAE Books is beta software and
+   the installer is not yet code-signed, so Windows doesn't recognise the
+   publisher. Click **More info**, then **Run anyway**.
+3. Follow the installer (Next → Next → Finish). It puts the app in your
+   Start menu and on your desktop.
+
+Start the app from the Start menu or the desktop shortcut. To remove it
+later, use **Settings → Apps** like any other program.
+
+### First run — three short questions
+
+Same as Linux below: where is your server, sign in, pick your company.
 
 ## Mac
 
-There is **no Mac version yet**. Mac users can use the web app in their
-browser at the same server address. A proper Mac app is planned.
+**Download** the disk image for your product:
+
+- SAE Books: `SAE Books-0.4.0.dmg`
+- tasur: `tasur-0.4.0.dmg`
+
+1. Open the `.dmg` and drag the app into **Applications**.
+2. The app is beta software and not yet notarized with Apple, so
+   double-clicking the first time may be blocked. Instead,
+   **right-click (or Control-click) the app → Open → Open**. You only do
+   this once; afterwards it opens normally.
 
 ---
 
 ## Checking your download (optional)
 
 If you want to verify the file arrived intact, compare its SHA-256
-checksum against `SHA256SUMS-0.3.0.txt` published alongside the
+checksum against `SHA256SUMS-0.4.0.txt` published alongside the
 downloads:
 
 ```
-sha256sum SAEBooks-0.3.0-x86_64.AppImage
+sha256sum SAEBooks-0.4.0-x86_64.AppImage
 ```
 
 The long code it prints must match the one in the checksum file exactly.

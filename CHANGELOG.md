@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-22
+
+### Added
+
+- **Real app icons on every surface.** Per-brand multi-resolution icon
+  assets generated from the brand SVGs (SAE Books tile / tasur "t." Selge
+  mark): runtime PNGs (16–256 px) wired into the window titlebar,
+  taskbar/dock and Alt-Tab via an application-wide `QIcon`
+  (`saebooks_desktop/app_icon.py`), a Windows AppUserModelID so the
+  taskbar groups and brands correctly, per-brand `.ico` embedded in the
+  frozen `.exe` + installer dialog + Add/Remove Programs, and per-brand
+  `.icns` wired into the Briefcase macOS bundles. No surface shows the
+  generic Qt/framework icon any more.
+- **Windows Start-menu shortcut.** The MSI now creates both a Start-menu
+  and a desktop shortcut (branded name + icon), and the Add/Remove
+  Programs entry carries the product name, publisher and icon.
+- **First-run "no server yet" path.** The server-connect wizard page
+  links to the one-click SAE Books server download
+  (github.com/saebooks/saebooks/releases) so a fresh install without a
+  server no longer dead-ends. The welcome page carries an honest beta
+  note.
+
 ### Changed
 
 - **Community-default packaging** (free launch). The first-run wizard is
