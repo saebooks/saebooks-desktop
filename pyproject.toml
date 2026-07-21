@@ -42,3 +42,53 @@ include = ["saebooks_desktop*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 qt_api = "pyside6"
+
+# --- macOS packaging (Briefcase) -------------------------------------------
+# Two apps, one codebase. Each brand is a distinct .app/.dmg with its own
+# bundle identifier and a tiny shim module (desktop/ , tasur/) that bakes the
+# brand and re-execs saebooks_desktop.main. Brand is also set via the
+# Info.plist LSEnvironment (double-click launches); the shim setdefault covers
+# terminal launches. Env precedence (env > baked > QSettings > default) holds.
+[tool.briefcase]
+project_name = "SAE Books Desktop"
+bundle = "com.saebooks"
+version = "0.3.0"
+url = "https://github.com/saebooks/saebooks-desktop"
+author = "SAE Engineering"
+author_email = "admin@saee.com.au"
+license.file = "LICENSE"
+
+[tool.briefcase.app.desktop]
+formal_name = "SAE Books"
+description = "SAE Books native desktop client (PySide6/Qt)"
+long_description = "SAE Books self-hosted double-entry accounting — native desktop client."
+sources = ["saebooks_desktop", "desktop"]
+requires = [
+    "PySide6>=6.5",
+    "httpx>=0.27",
+    "platformdirs>=4.0",
+    "grpcio>=1.60",
+    "protobuf>=4.0",
+]
+
+[tool.briefcase.app.desktop.macOS]
+min_os_version = "13.0"
+info.LSEnvironment.SAEBOOKS_BRAND = "saebooks"
+
+[tool.briefcase.app.tasur]
+formal_name = "tasur"
+bundle = "com.saebooks.desktop"
+description = "tasur — self-hosted accounting (Estonia brand of SAE Books)"
+long_description = "tasur — self-hosted double-entry accounting, Estonia brand of SAE Books."
+sources = ["saebooks_desktop", "tasur"]
+requires = [
+    "PySide6>=6.5",
+    "httpx>=0.27",
+    "platformdirs>=4.0",
+    "grpcio>=1.60",
+    "protobuf>=4.0",
+]
+
+[tool.briefcase.app.tasur.macOS]
+min_os_version = "13.0"
+info.LSEnvironment.SAEBOOKS_BRAND = "tasur"
