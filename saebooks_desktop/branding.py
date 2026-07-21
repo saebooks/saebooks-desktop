@@ -49,6 +49,13 @@ BRANDS: dict[str, Brand] = {
         logo_filename="saebooks-desktop.svg",
         tagline="self-hosted accounting",
     ),
+    # tasur visual identity — Direction A "Selge" (2026-07-21). Brand anchor
+    # navy #194291. Assets: tasur.svg (icon: #194291 tile, white "t",
+    # #A9C2F5 dot) plus tasur-wordmark-on-{light,dark}.svg in assets/.
+    # WCAG rules for any tasur-specific chrome: on LIGHT backgrounds use
+    # #194291 (secondary #3563C7) for text/accents; on DARK backgrounds
+    # never use #194291 as text — use #7D9EE8 or #A9C2F5 (wordmark ink
+    # #DCE6FB); #194291 on dark only as a surface/tile with white content.
     "tasur": Brand(
         id="tasur",
         product_name="tasur",
