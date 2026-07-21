@@ -43,6 +43,11 @@ def main(argv: list[str] | None = None) -> int:
 
     app = QApplication.instance() or QApplication(sys.argv)
 
+    # Brand icon on every surface (titlebar, taskbar, Alt-Tab) — must run
+    # before any window is shown.
+    from saebooks_desktop.app_icon import apply_app_icon
+    apply_app_icon(app)
+
     # Apply the stored theme preference before showing any window.
     from saebooks_desktop.services.theme import apply_theme_from_settings
     apply_theme_from_settings()

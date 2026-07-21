@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "saebooks-desktop"
-version = "0.3.0"
+version = "0.4.0"
 description = "SAE Books native desktop client (PySide6/Qt)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -33,7 +33,11 @@ saebooks-desktop = "saebooks_desktop.main:main"
 saebooks-desktop-gui = "saebooks_desktop.__main__:main"
 
 [tool.setuptools.package-data]
-saebooks_desktop = ["i18n_data/*/LC_MESSAGES/*.mo", "assets/*.svg"]
+saebooks_desktop = [
+    "i18n_data/*/LC_MESSAGES/*.mo",
+    "assets/*.svg",
+    "assets/icons/*.png",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -52,7 +56,7 @@ qt_api = "pyside6"
 [tool.briefcase]
 project_name = "SAE Books Desktop"
 bundle = "com.saebooks"
-version = "0.3.0"
+version = "0.4.0"
 url = "https://github.com/saebooks/saebooks-desktop"
 author = "SAE Engineering"
 author_email = "admin@saee.com.au"
@@ -62,6 +66,7 @@ license.file = "LICENSE"
 formal_name = "SAE Books"
 description = "SAE Books native desktop client (PySide6/Qt)"
 long_description = "SAE Books self-hosted double-entry accounting — native desktop client."
+icon = "deploy/macos/icons/saebooks"
 sources = ["saebooks_desktop", "desktop"]
 requires = [
     "PySide6>=6.5",
@@ -80,6 +85,7 @@ formal_name = "tasur"
 bundle = "com.saebooks.desktop"
 description = "tasur — self-hosted accounting (Estonia brand of SAE Books)"
 long_description = "tasur — self-hosted double-entry accounting, Estonia brand of SAE Books."
+icon = "deploy/macos/icons/tasur"
 sources = ["saebooks_desktop", "tasur"]
 requires = [
     "PySide6>=6.5",
