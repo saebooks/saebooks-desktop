@@ -39,6 +39,8 @@ from saebooks_desktop.views.dashboard import DashboardView
 from saebooks_desktop.views.full_accounting_door import FullAccountingDoorView
 from saebooks_desktop.views.accounts import AccountsView
 from saebooks_desktop.views.banking import BankingView
+from saebooks_desktop.views.imports import ImportStatementView
+from saebooks_desktop.views.reconciliation import ReconciliationView
 from saebooks_desktop.views.bill_detail import BillDetailView
 from saebooks_desktop.views.bills import BillsView
 from saebooks_desktop.views.expenses import ExpensesView
@@ -461,7 +463,52 @@ class MainWindow(QMainWindow):
                 self._open_je_form = _open_je_form
                 view = je_stack
             elif label == "Banking" and enabled:
-                view = BankingView()
+                # Banking is a 3-panel stack: the statement-lines list, the
+                # statement importer, and the reconcile screen. The list's
+                # "Import Statement" / "Reconcile" buttons drive the stack;
+                # each sub-view degrades on its own (per-panel isolation).
+                banking_list_view = BankingView()
+                import_view = ImportStatementView()
+                reconcile_view = ReconciliationView()
+
+                banking_stack = QStackedWidget()
+                _bank_list_idx = banking_stack.addWidget(banking_list_view)
+                _bank_import_idx = banking_stack.addWidget(import_view)
+                _bank_reconcile_idx = banking_stack.addWidget(reconcile_view)
+
+                def _show_bank_list(
+                    s: QStackedWidget = banking_stack, i: int = _bank_list_idx,
+                    lv: BankingView = banking_list_view,
+                ) -> None:
+                    lv.reload()
+                    s.setCurrentIndex(i)
+
+                def _show_bank_import(
+                    s: QStackedWidget = banking_stack, i: int = _bank_import_idx,
+                    iv: ImportStatementView = import_view,
+                ) -> None:
+                    iv.reload()
+                    s.setCurrentIndex(i)
+
+                def _show_bank_reconcile(
+                    account_id: str = "",
+                    s: QStackedWidget = banking_stack, i: int = _bank_reconcile_idx,
+                    rv: ReconciliationView = reconcile_view,
+                ) -> None:
+                    rv.load_account(account_id)
+                    s.setCurrentIndex(i)
+
+                banking_list_view.import_requested.connect(_show_bank_import)
+                banking_list_view.reconcile_requested.connect(_show_bank_reconcile)
+                import_view.import_done.connect(_show_bank_list)
+                import_view.cancelled.connect(_show_bank_list)
+                reconcile_view.back_requested.connect(_show_bank_list)
+
+                self._banking_list_view = banking_list_view
+                self._banking_import_view = import_view
+                self._banking_reconcile_view = reconcile_view
+                self._banking_stack = banking_stack
+                view = banking_stack
             elif label == "Payments" and enabled:
                 payments_list_view = PaymentsView()
                 payments_stack = QStackedWidget()
