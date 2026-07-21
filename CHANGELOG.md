@@ -29,6 +29,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "gRPC host:port" / "REST URL (fallback)".
 - **x64 app installed into `C:\Program Files (x86)\`.** The MSI now targets
   `[ProgramFiles64Folder]`.
+- **AppImage payload never got the Qt trim, and shipped a broken build.**
+  The Windows MSI payload trim (see below) only touched cx_Freeze's
+  `setup_freeze.py`; `deploy/appimage/requirements.txt` still pinned the
+  full `PySide6` meta-package (Addons and all) and this package's own
+  `pyproject.toml` dependency did too, so the AppImage kept re-pulling
+  Addons regardless of what the AppImage requirements file said. Both now
+  depend on `PySide6-Essentials` (the client only imports
+  QtCore/QtGui/QtWidgets, grep-verified). Removing `grpcio-tools` from the
+  AppImage's requirements (mirroring the MSI dev-extra demotion) also
+  silently removed `protobuf`, which the generated gRPC stubs
+  `import google.protobuf` directly at runtime — the AppImage crashed with
+  `ModuleNotFoundError: No module named 'google'` on first launch until
+  `protobuf` was added back as an explicit runtime dependency. AppImage
+  builds now come in at ~95 MB per brand (from 248 MB).
 
 ### Changed
 

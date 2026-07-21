@@ -9,10 +9,26 @@ description = "SAE Books native desktop client (PySide6/Qt)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "PySide6>=6.5",
+    # PySide6-Essentials, not the full PySide6 meta-package: the client only
+    # imports QtCore/QtGui/QtWidgets (grep-verified across saebooks_desktop
+    # and tests), plus the QtSvg image-format plugin for icon rendering, all
+    # of which live in Essentials. The full "PySide6" meta-package also pulls
+    # in PySide6-Addons (WebEngine, Quick3D, Charts, Multimedia, 3D...) —
+    # hundreds of MB this client never uses. shiboken6 comes along as
+    # PySide6-Essentials' own dependency. Discovered as a live bug: this
+    # package's own metadata was still requiring full "PySide6", which
+    # silently re-pulled Addons into the AppImage build even after
+    # deploy/appimage/requirements.txt was trimmed to PySide6-Essentials.
+    "PySide6-Essentials>=6.5",
     "httpx>=0.27",
     "platformdirs>=4.0",
     "grpcio>=1.60",
+    # google.protobuf is imported directly by the generated stubs under
+    # saebooks_desktop/grpc_gen/ — it is a real runtime dependency, not just
+    # a byproduct of grpcio-tools (which is build-time only, see the dev
+    # extra below). Matches tool.briefcase.app.*.requires, which already had
+    # this right.
+    "protobuf>=4.0",
 ]
 
 [project.optional-dependencies]
