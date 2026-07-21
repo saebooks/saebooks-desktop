@@ -42,4 +42,13 @@ class WelcomePage(QWizardPage):
         body.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         body.setWordWrap(True)
         layout.addWidget(body)
+
+        beta_note = QLabel(
+            f"{brand.product_name} is beta software. It is fully functional "
+            "and your data stays on your own server, but you may run into "
+            "rough edges — we appreciate your patience and bug reports."
+        )
+        beta_note.setWordWrap(True)
+        beta_note.setStyleSheet("color: #666;")
+        layout.addWidget(beta_note)
         layout.addStretch()
