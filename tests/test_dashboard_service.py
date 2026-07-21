@@ -102,10 +102,35 @@ class TestBuildDashboardModel:
     def test_uses_trailing_12_month_window_for_pl(self) -> None:
         client = MagicMock()
         with mock_dashboard_fetches(pl=_PL, ar=_AR, ap=_AP, modules=_MODULES) as mocks:
-            build_dashboard_model(client, "2026-07-18")
+            model = build_dashboard_model(client, "2026-07-18")
         mocks["pl"].assert_called_once_with(client, "2025-07-18", "2026-07-18")
         mocks["ar"].assert_called_once_with(client, "2026-07-18")
         mocks["ap"].assert_called_once_with(client, "2026-07-18")
+        assert model["pl_active_preset"] == "trailing_12"
+        assert model["pl_from_date"] == "2025-07-18"
+        assert model["pl_to_date"] == "2026-07-18"
+
+    def test_this_fy_preset_uses_company_fin_year_start_month(self) -> None:
+        """A calendar-year-FY company (fin_year_start_month=1) resolves
+        'this_fy' to 1 January, not the AU default 1 July."""
+        client = MagicMock()
+        with mock_dashboard_fetches(pl=_PL, ar=_AR, ap=_AP, modules=_MODULES) as mocks:
+            model = build_dashboard_model(
+                client, "2026-07-18", preset="this_fy", fin_year_start_month=1
+            )
+        mocks["pl"].assert_called_once_with(client, "2026-01-01", "2026-07-18")
+        assert model["pl_active_preset"] == "this_fy"
+
+    def test_last_fy_preset_ends_at_prior_fy_end_not_today(self) -> None:
+        client = MagicMock()
+        with mock_dashboard_fetches(pl=_PL, ar=_AR, ap=_AP, modules=_MODULES) as mocks:
+            model = build_dashboard_model(
+                client, "2026-07-18", preset="last_fy", fin_year_start_month=7
+            )
+        mocks["pl"].assert_called_once_with(client, "2025-07-01", "2026-06-30")
+        # Aged reports stay "as of today" regardless of the P&L preset.
+        mocks["ar"].assert_called_once_with(client, "2026-07-18")
+        assert model["pl_active_preset"] == "last_fy"
 
     def test_module_unavailable_error_isolated_to_its_section(self) -> None:
         client = MagicMock()

@@ -48,6 +48,8 @@ from PySide6.QtWidgets import (
 )
 
 from saebooks_desktop.branding import get_brand
+from saebooks_desktop.i18n import tr
+from saebooks_desktop.services import period
 from saebooks_desktop.services.api_client import (
     APIClient,
     APIError,
@@ -61,6 +63,23 @@ from saebooks_desktop.services.cashbook import (
     list_categories,
     list_entries,
 )
+from saebooks_desktop.services.company_settings import get_company
+from saebooks_desktop.services.settings import get_company_id
+
+#: Period-picker presets for the summary strip — same ids + labels as
+#: saebooks-web's period picker, reusing the same i18n msgids via the
+#: shared .mo catalogs (see i18n.py module docstring). Default index below
+#: (calendar_ytd) matches services.cashbook.get_summary's own prior
+#: default, so an unmodified load behaves identically to before this
+#: picker existed.
+_PERIOD_PRESET_OPTIONS: list[tuple[str, str]] = [
+    ("this_fy", "This FY"),
+    ("last_fy", "Last FY"),
+    ("calendar_ytd", "Calendar year to date"),
+    ("trailing_12", "Trailing 12 months"),
+    ("this_quarter", "This quarter"),
+]
+_DEFAULT_PERIOD_PRESET_INDEX = 2  # "calendar_ytd"
 
 _COL_DATE = 0
 _COL_DIRECTION = 1
@@ -161,6 +180,20 @@ class CashbookView(QWidget):
             self._gst_paid_label,
         ):
             summary_layout.addWidget(label)
+
+        # --- Period picker (drives the summary strip's date range) ---
+        self._period_combo = QComboBox()
+        self._period_combo.setObjectName("period_combo")
+        for preset_id, label in _PERIOD_PRESET_OPTIONS:
+            self._period_combo.addItem(tr(label), preset_id)
+        self._period_combo.setCurrentIndex(_DEFAULT_PERIOD_PRESET_INDEX)
+        self._period_combo.currentIndexChanged.connect(self._on_period_changed)
+        summary_layout.addWidget(self._period_combo)
+
+        self._period_label = QLabel("")
+        self._period_label.setObjectName("period_label")
+        self._period_label.setStyleSheet("color: #666; font-size: 11px;")
+        summary_layout.addWidget(self._period_label)
 
         spacer = QWidget()
         spacer.setSizePolicy(
@@ -263,11 +296,21 @@ class CashbookView(QWidget):
         self._offline_banner.setVisible(False)
         self._module_banner.setVisible(False)
         self._add_btn.setEnabled(True)
+        # Marks the view as loaded so _on_period_changed knows a later
+        # combo change is a real user interaction, not construction-time
+        # signal noise (mirrors DashboardView's same guard).
+        self._loaded_once = True
+
+        preset = self._period_combo.currentData() or "calendar_ytd"
+        fin_year_start_month = self._fetch_fin_year_start_month(self._client)
+        date_from, date_to, _active = period.resolve_period(
+            preset, fin_year_start_month=fin_year_start_month
+        )
 
         try:
             categories = list_categories(self._client)
-            summary = get_summary(self._client)
-            entries = list_entries(self._client)
+            summary = get_summary(self._client, date_from=date_from, date_to=date_to)
+            entries = list_entries(self._client, date_from=date_from, date_to=date_to)
         except ServerOfflineError:
             self._offline_banner.setVisible(True)
             return
@@ -283,10 +326,31 @@ class CashbookView(QWidget):
         self._populate_summary(summary)
         self._populate_category_combo()
         self._populate_entries(entries)
+        self._period_label.setText(f"{date_from} → {date_to}")
+
+    def _fetch_fin_year_start_month(self, client: APIClient) -> int:
+        """Best-effort fetch of the active company's fin_year_start_month.
+
+        Returns 7 (AU default) if no company is configured yet, the fetch
+        fails, or the field is missing/unparseable.
+        """
+        company_id = get_company_id()
+        if not company_id:
+            return 7
+        try:
+            company = get_company(client, company_id)
+            value = company.get("fin_year_start_month")
+            return int(value) if value else 7
+        except Exception:  # noqa: BLE001 — never block the cashbook load
+            return 7
 
     def reload(self) -> None:
         """Alias for ``load()`` with the current client — matches sibling views."""
         self.load()
+
+    def _on_period_changed(self, _index: int) -> None:
+        if getattr(self, "_loaded_once", False):
+            self.load()
 
     # ------------------------------------------------------------------
     # Private helpers — population

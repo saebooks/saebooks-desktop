@@ -354,3 +354,56 @@ class TestDashboardViewModulesStrip:
         }
         view = _make_view_and_load(qapp, model=model)
         assert view._modules_label.text() == "All modules healthy"
+
+
+# ---------------------------------------------------------------------------
+# Period picker
+# ---------------------------------------------------------------------------
+
+
+class TestDashboardViewPeriodPicker:
+    def test_combo_has_five_presets_defaulting_to_trailing_12(self, qapp) -> None:
+        from saebooks_desktop.views.dashboard import DashboardView
+
+        view = DashboardView()
+        assert view._period_combo.count() == 5
+        assert view._period_combo.currentData() == "trailing_12"
+
+    def test_period_label_shows_resolved_range(self, qapp) -> None:
+        model = dict(_SAMPLE_MODEL)
+        model["pl_from_date"] = "2025-07-21"
+        model["pl_to_date"] = "2026-07-21"
+        view = _make_view_and_load(qapp, model=model)
+        assert view._period_label.text() == "2025-07-21 → 2026-07-21"
+
+    def test_period_label_blank_when_no_dates_in_model(self, qapp) -> None:
+        # Older-shaped model dict (no pl_from_date/pl_to_date keys) degrades
+        # to an empty subtitle rather than raising.
+        view = _make_view_and_load(qapp, model=_SAMPLE_MODEL)
+        assert view._period_label.text() == ""
+
+    def test_changing_preset_reloads_with_new_preset(self, qapp) -> None:
+        from unittest.mock import patch
+
+        from saebooks_desktop.views.dashboard import DashboardView
+
+        view = DashboardView()
+        with patch(_PATCH_BUILD, return_value=_SAMPLE_MODEL) as mocked:
+            view.load(client=MagicMock())
+            mocked.reset_mock()
+            # Select "This FY" (index 0) — triggers a reload via the
+            # currentIndexChanged signal now that _loaded_once is True.
+            view._period_combo.setCurrentIndex(0)
+
+        mocked.assert_called_once()
+        _client_arg, _today_arg = mocked.call_args.args
+        assert mocked.call_args.kwargs["preset"] == "this_fy"
+
+    def test_construction_does_not_reload_on_preset_wiring(self, qapp) -> None:
+        """Building the combo's items (addItem/setCurrentIndex) must not
+        itself trigger a network call before the view is ever shown."""
+        with patch(_PATCH_BUILD) as mocked:
+            from saebooks_desktop.views.dashboard import DashboardView
+
+            DashboardView()
+        mocked.assert_not_called()

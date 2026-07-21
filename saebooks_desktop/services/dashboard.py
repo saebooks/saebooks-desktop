@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from saebooks_desktop.services import period
 from saebooks_desktop.services.api_client import (
     APIClient,
     APIError,
@@ -81,25 +82,37 @@ def fetch_module_health(client: APIClient) -> dict[str, Any]:
 def _trailing_12_month_start(today: str) -> str:
     """Return the ISO date exactly one year before *today* (same month/day).
 
-    Used as the P&L ``from_date`` for a trailing-12-month window ending
-    *today*.  ``today`` is an ISO-8601 date string (``YYYY-MM-DD``).
+    Thin wrapper over ``services.period.subtract_one_year`` — kept as a
+    named function (rather than inlined at the one call site) since
+    existing tests import it directly and the "trailing 12 months" name is
+    clearer at a glance than the generic period helper.
     """
     d = datetime.strptime(today, "%Y-%m-%d").date()
-    try:
-        start = d.replace(year=d.year - 1)
-    except ValueError:
-        # Feb-29 on a non-leap prior year — fall back to Feb-28.
-        start = d.replace(year=d.year - 1, day=28)
-    return start.isoformat()
+    return period.subtract_one_year(d).isoformat()
 
 
-def build_dashboard_model(client: APIClient, today: str) -> dict[str, Any]:
+def build_dashboard_model(
+    client: APIClient,
+    today: str,
+    preset: str = "trailing_12",
+    fin_year_start_month: int = 7,
+) -> dict[str, Any]:
     """Compose the dashboard's data sections from independent report fetches.
 
     Args:
         client: Caller-supplied APIClient instance.
         today: ISO-8601 date string (``YYYY-MM-DD``) used as "as of" for the
-            aged reports and as the end of the trailing-12-month P&L window.
+            aged reports and as the end of the P&L window (except
+            ``preset="last_fy"``, whose window ends at the prior FY's end).
+        preset: One of ``services.period.PRESET_IDS`` (``"this_fy"``,
+            ``"last_fy"``, ``"calendar_ytd"``, ``"trailing_12"``,
+            ``"this_quarter"``) driving the P&L window. Defaults to
+            ``"trailing_12"`` — unchanged behaviour for existing callers.
+        fin_year_start_month: The active company's financial-year start
+            month (1-12), used by the ``this_fy``/``last_fy`` presets.
+            Defaults to 7 (AU) — callers should fetch the real value via
+            ``services.company_settings.get_company`` and pass it through;
+            the view layer owns that fetch, not this service function.
 
     Returns:
         ``{"pl": dict | None, "ar": dict | None, "ap": dict | None,
@@ -114,7 +127,11 @@ def build_dashboard_model(client: APIClient, today: str) -> dict[str, Any]:
         ServerOfflineError: if the server itself is unreachable — in that
             case the whole dashboard is offline and nothing is composed.
     """
-    from_date = _trailing_12_month_start(today)
+    today_d = datetime.strptime(today, "%Y-%m-%d").date()
+    from_date, to_date, _active_preset = period.resolve_period(
+        preset, fin_year_start_month=fin_year_start_month, today=today_d
+    )
+    to_date = to_date or today
 
     model: dict[str, Any] = {
         "pl": None,
@@ -122,10 +139,13 @@ def build_dashboard_model(client: APIClient, today: str) -> dict[str, Any]:
         "ap": None,
         "modules": None,
         "errors": {},
+        "pl_from_date": from_date,
+        "pl_to_date": to_date,
+        "pl_active_preset": _active_preset,
     }
 
     try:
-        model["pl"] = fetch_profit_loss_summary(client, from_date, today)
+        model["pl"] = fetch_profit_loss_summary(client, from_date, to_date)
     except ServerOfflineError:
         raise
     except (ModuleUnavailableError, APIError) as exc:
