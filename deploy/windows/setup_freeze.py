@@ -209,6 +209,9 @@ executables = [
 setup(
     name=_MSI_FACTS["setup_name"],
     version=VERSION,
+    # cx_Freeze derives the MSI Manufacturer property (ARP "Publisher") from
+    # distribution metadata — summary_data.author alone leaves it "UNKNOWN".
+    author=BRAND.org_name,
     description=f"{BRAND.product_name} — {BRAND.tagline} desktop client",
     options={
         "build_exe": build_exe_options,
