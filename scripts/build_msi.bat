@@ -49,7 +49,9 @@ REM clean Windows machine ("VCRUNTIME140.dll was not found"). The frozen
 REM directory bdist_msi packaged is under build\exe.*; refuse to hand over an
 REM MSI whose payload lacks the runtime.
 set "VCRT_FOUND="
-for /f "delims=" %%F in ('dir /b /s build\exe.*\vcruntime140.dll 2^>nul') do (
+REM NOTE: `dir /s` recurses from the named directory; a wildcard in the
+REM directory part (build\exe.*\...) does NOT match, so search from build\.
+for /f "delims=" %%F in ('dir /b /s build\vcruntime140.dll 2^>nul') do (
     set "VCRT_FOUND=%%F"
 )
 if not defined VCRT_FOUND (
