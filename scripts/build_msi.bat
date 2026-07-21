@@ -37,13 +37,17 @@ if /i "%BRAND%"=="tasur" (
     set "MSI_PREFIX=SAEBooks"
 )
 
-REM Clear stale MSIs first. The rename step below picks "the .msi in dist\",
-REM and a leftover from an earlier build silently wins that race — that is how
-REM a stale 264 MB artifact got mistaken for a fresh 50 MB one on 2026-07-22.
-if exist dist\*.msi del /q dist\*.msi
+REM Build into a per-brand scratch directory, NOT straight into dist\.
+REM Picking up "the .msi in dist\" after the fact is how a stale 264 MB
+REM v0.3.0-era artifact got reported as the fresh 50 MB v0.4.0 build on
+REM 2026-07-22 — and clearing dist\ instead would delete the other brand's
+REM MSI when both are built in sequence. A scratch dir per brand has exactly
+REM one MSI in it, always this build's.
+set "STAGE_DIR=build\msi-stage-%BRAND%"
+if exist "%STAGE_DIR%" rmdir /s /q "%STAGE_DIR%"
 
 echo Building %MSI_PREFIX% MSI...
-python deploy\windows\setup_freeze.py bdist_msi
+python deploy\windows\setup_freeze.py bdist_msi --dist-dir "%STAGE_DIR%"
 if errorlevel 1 (
     echo MSI build failed.
     exit /b 1
@@ -72,17 +76,16 @@ REM cx_Freeze names the file <name>-<version>-<platform>.msi inside dist\.
 REM Rename to our canonical <Brand>-<version>-x64.msi convention.
 set "BUILT_MSI="
 set "MSI_COUNT=0"
-for /f "delims=" %%F in ('dir /b /s dist\*.msi 2^>nul') do (
+for /f "delims=" %%F in ('dir /b /s "%STAGE_DIR%\*.msi" 2^>nul') do (
     set "BUILT_MSI=%%F"
     set /a MSI_COUNT+=1
 )
 if not defined BUILT_MSI (
-    echo No .msi found in dist\ after build.
+    echo No .msi found in %STAGE_DIR%\ after build.
     exit /b 1
 )
 if not "%MSI_COUNT%"=="1" (
-    echo ERROR: %MSI_COUNT% .msi files in dist\ — cannot tell which one this
-    echo build produced. Clear dist\ and rebuild.
+    echo ERROR: %MSI_COUNT% .msi files in %STAGE_DIR%\ — expected exactly 1.
     exit /b 1
 )
 
@@ -92,10 +95,14 @@ REM version and an MSI named "SAEBooks--x64.msi". Keep this on one line.
 python -c "import importlib.util as u;s=u.spec_from_file_location('p','saebooks_desktop/__init__.py');m=u.module_from_spec(s);s.loader.exec_module(m);print(m.__version__)" > "%TEMP%\saebooks_ver.txt"
 set /p VERSION=<"%TEMP%\saebooks_ver.txt"
 
+if not exist dist mkdir dist
 set "DEST_MSI=dist\%MSI_PREFIX%-%VERSION%-x64.msi"
-if not "%BUILT_MSI%"=="%DEST_MSI%" (
-    move /y "%BUILT_MSI%" "%DEST_MSI%"
+move /y "%BUILT_MSI%" "%DEST_MSI%" >nul
+if errorlevel 1 (
+    echo Could not move %BUILT_MSI% to %DEST_MSI%.
+    exit /b 1
 )
+rmdir /s /q "%STAGE_DIR%"
 
 echo.
 echo MSI ready: %DEST_MSI%
