@@ -98,6 +98,15 @@ _PATCH_GET_SUMMARY = "saebooks_desktop.views.cashbook.get_summary"
 _PATCH_LIST_ENTRIES = "saebooks_desktop.views.cashbook.list_entries"
 _PATCH_CREATE_ENTRY = "saebooks_desktop.views.cashbook.create_entry"
 _PATCH_DELETE_ENTRY = "saebooks_desktop.views.cashbook.delete_entry"
+# get_company/get_company_id back the period picker's fin_year_start_month
+# lookup (CashbookView._fetch_fin_year_start_month) — MUST always be
+# patched here too, never left to hit the real (unmocked) APIClient /
+# QSettings. A real machine can have a company_id persisted in QSettings
+# from prior manual app use (verified locally: get_company_id() returned a
+# real value), which would otherwise make load() attempt a genuine network
+# call during a "no HTTP calls" unit test.
+_PATCH_GET_COMPANY = "saebooks_desktop.views.cashbook.get_company"
+_PATCH_GET_COMPANY_ID = "saebooks_desktop.views.cashbook.get_company_id"
 
 
 def _make_view(
@@ -108,6 +117,7 @@ def _make_view(
     categories_side_effect=None,
     summary_side_effect=None,
     entries_side_effect=None,
+    fin_year_start_month=None,
 ):
     from saebooks_desktop.views.cashbook import CashbookView
 
@@ -133,8 +143,20 @@ def _make_view(
             _PATCH_LIST_ENTRIES, return_value=entries if entries is not None else []
         )
     )
+    # Default: no company configured -> _fetch_fin_year_start_month short-
+    # circuits to 7 without calling get_company at all (matches production
+    # behaviour for a fresh install). Pass fin_year_start_month= to
+    # exercise the "company IS configured" path deterministically instead.
+    company_id_patch = patch(
+        _PATCH_GET_COMPANY_ID,
+        return_value="co-test" if fin_year_start_month is not None else "",
+    )
+    company_patch = patch(
+        _PATCH_GET_COMPANY,
+        return_value={"fin_year_start_month": fin_year_start_month},
+    )
 
-    with cat_patch, summary_patch, entries_patch:
+    with cat_patch, summary_patch, entries_patch, company_id_patch, company_patch:
         view = CashbookView()
         # Initial load moved from __init__ to first showEvent; trigger it
         # here explicitly while the service patches are still active.
@@ -382,6 +404,8 @@ class TestCashbookViewAddEntry:
             _PATCH_LIST_ENTRIES, return_value=[]
         ), patch(_PATCH_GET_SUMMARY, return_value={}), patch(
             _PATCH_LIST_CATEGORIES, return_value=_SAMPLE_CATEGORIES
+        ), patch(_PATCH_GET_COMPANY_ID, return_value=""), patch(
+            _PATCH_GET_COMPANY, return_value={}
         ):
             view._on_save_clicked()
 
@@ -397,6 +421,8 @@ class TestCashbookViewAddEntry:
             _PATCH_LIST_ENTRIES, return_value=[]
         ), patch(_PATCH_GET_SUMMARY, return_value={}), patch(
             _PATCH_LIST_CATEGORIES, return_value=_SAMPLE_CATEGORIES
+        ), patch(_PATCH_GET_COMPANY_ID, return_value=""), patch(
+            _PATCH_GET_COMPANY, return_value={}
         ):
             view._on_save_clicked()
 
@@ -465,6 +491,10 @@ class TestCashbookViewDeleteEntry:
             _PATCH_LIST_ENTRIES, return_value=[]
         ), patch(_PATCH_GET_SUMMARY, return_value={}), patch(
             _PATCH_LIST_CATEGORIES, return_value=[]
+        ), patch(
+            _PATCH_GET_COMPANY_ID, return_value=""
+        ), patch(
+            _PATCH_GET_COMPANY, return_value={}
         ), patch.object(
             QMessageBox,
             "question",
@@ -488,3 +518,85 @@ class TestCashbookViewDeleteEntry:
             view._on_delete_clicked()
 
         mock_delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Period picker
+# ---------------------------------------------------------------------------
+
+
+class TestCashbookViewPeriodPicker:
+    def test_combo_has_five_presets_defaulting_to_calendar_ytd(self, qapp) -> None:
+        view = _make_view(qapp)
+        assert view._period_combo.count() == 5
+        assert view._period_combo.currentData() == "calendar_ytd"
+
+    def test_period_label_shows_resolved_range(self, qapp) -> None:
+        view = _make_view(qapp, summary=_SAMPLE_SUMMARY)
+        # calendar_ytd with no company configured -> Jan 1 this year -> today.
+        import datetime
+
+        today = datetime.date.today()
+        assert view._period_label.text() == f"{today.year}-01-01 → {today.isoformat()}"
+
+    def test_get_summary_called_with_resolved_dates(self, qapp) -> None:
+        import datetime
+
+        today = datetime.date.today()
+        with patch(_PATCH_LIST_CATEGORIES, return_value=[]), patch(
+            _PATCH_GET_SUMMARY, return_value={}
+        ) as mock_summary, patch(_PATCH_LIST_ENTRIES, return_value=[]), patch(
+            _PATCH_GET_COMPANY_ID, return_value=""
+        ), patch(_PATCH_GET_COMPANY, return_value={}):
+            from saebooks_desktop.views.cashbook import CashbookView
+
+            view = CashbookView()
+            view._loaded_once = True
+            view.load()
+
+        mock_summary.assert_called_once()
+        _client_arg = mock_summary.call_args.args[0]
+        assert mock_summary.call_args.kwargs["date_from"] == f"{today.year}-01-01"
+        assert mock_summary.call_args.kwargs["date_to"] == today.isoformat()
+
+    def test_this_fy_preset_uses_company_fin_year_start_month(self, qapp) -> None:
+        """A calendar-year-FY company (fin_year_start_month=1) resolves
+        'this_fy' the same as calendar_ytd — both start 1 January."""
+        import datetime
+
+        today = datetime.date.today()
+        with patch(_PATCH_LIST_CATEGORIES, return_value=[]), patch(
+            _PATCH_GET_SUMMARY, return_value={}
+        ) as mock_summary, patch(_PATCH_LIST_ENTRIES, return_value=[]), patch(
+            _PATCH_GET_COMPANY_ID, return_value="co-test"
+        ), patch(_PATCH_GET_COMPANY, return_value={"fin_year_start_month": 1}):
+            from saebooks_desktop.views.cashbook import CashbookView
+
+            view = CashbookView()
+            view._loaded_once = True
+            view._period_combo.setCurrentIndex(0)  # "This FY"
+            view.load()
+
+        assert mock_summary.call_args.kwargs["date_from"] == f"{today.year}-01-01"
+
+    def test_construction_does_not_reload_on_preset_wiring(self, qapp) -> None:
+        with patch(_PATCH_LIST_CATEGORIES) as mock_cat, patch(
+            _PATCH_GET_SUMMARY
+        ) as mock_summary, patch(_PATCH_LIST_ENTRIES) as mock_entries:
+            from saebooks_desktop.views.cashbook import CashbookView
+
+            CashbookView()
+        mock_cat.assert_not_called()
+        mock_summary.assert_not_called()
+        mock_entries.assert_not_called()
+
+    def test_changing_preset_reloads(self, qapp) -> None:
+        view = _make_view(qapp, summary=_SAMPLE_SUMMARY)
+        with patch(_PATCH_LIST_CATEGORIES, return_value=[]), patch(
+            _PATCH_GET_SUMMARY, return_value={}
+        ) as mock_summary, patch(_PATCH_LIST_ENTRIES, return_value=[]), patch(
+            _PATCH_GET_COMPANY_ID, return_value=""
+        ), patch(_PATCH_GET_COMPANY, return_value={}):
+            view._period_combo.setCurrentIndex(4)  # "This quarter"
+
+        mock_summary.assert_called_once()
