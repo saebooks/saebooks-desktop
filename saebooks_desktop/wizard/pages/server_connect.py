@@ -41,6 +41,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFormLayout,
@@ -111,6 +112,30 @@ class ServerConnectPage(QWizardPage):
         layout.addWidget(self._radio_local)
         layout.addWidget(self._radio_cloud)
         layout.addWidget(self._radio_lan)
+
+        # ------------------------------------------------------------------
+        # No-server escape hatch — a fresh install without a server must
+        # not dead-end here.
+        # ------------------------------------------------------------------
+        self._no_server_note = QLabel(
+            f"<b>Don't have a server yet?</b> {product} keeps your books in "
+            "a small, free server program — one file, no setup. "
+            "<a href=\"https://github.com/saebooks/saebooks/releases\">"
+            "Download the one-click server</a>, run it on this computer, "
+            "then choose “On this computer” above and press "
+            "Test Connection."
+        )
+        self._no_server_note.setWordWrap(True)
+        self._no_server_note.setOpenExternalLinks(True)
+        self._no_server_note.setTextFormat(Qt.TextFormat.RichText)
+        self._no_server_note.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+        )
+        self._no_server_note.setStyleSheet(
+            "color: #444; background: #f5f5f5; "
+            "border-left: 3px solid #9e9e9e; padding: 8px; margin-top: 6px;"
+        )
+        layout.addWidget(self._no_server_note)
 
         # ------------------------------------------------------------------
         # Cloud-mode input — single REST URL
