@@ -103,6 +103,13 @@ build_exe_options: dict = {
     "include_files": [
         # Baked brand marker, installed beside the executable.
         (str(_brand_cfg), "brand.cfg"),
+        # Runtime window/taskbar icons — the package lives inside the
+        # library zip, so saebooks_desktop.app_icon looks for these beside
+        # the executable in frozen builds.
+        (
+            str(_here / "saebooks_desktop" / "assets" / "icons"),
+            os.path.join("assets", "icons"),
+        ),
     ],
     "zip_include_packages": ["*"],
     "zip_exclude_packages": [
@@ -113,6 +120,52 @@ build_exe_options: dict = {
     # Silence noisy DLL copy warnings from cx_Freeze.
     "silent": True,
 }
+
+# ---------------------------------------------------------------------------
+# Per-brand installer icon (.ico with 16–256 px, generated from the brand
+# SVG — see saebooks_desktop/assets/). Used for the .exe resource, the
+# installer dialog, and the Add/Remove Programs entry.
+# ---------------------------------------------------------------------------
+ICON_PATH = str(_here / "deploy" / "windows" / f"{BRAND_ID}.ico")
+if not pathlib.Path(ICON_PATH).is_file():
+    raise SystemExit(f"Missing installer icon: {ICON_PATH}")
+
+# ---------------------------------------------------------------------------
+# Shortcuts — Start menu + desktop, both pointing at the frozen exe (which
+# carries the brand icon as its resource, so both shortcuts show it).
+# MSI Shortcut table: (Shortcut, Directory_, Name, Component_, Target,
+# Arguments, Description, Hotkey, Icon, IconIndex, ShowCmd, WkDir).
+# ---------------------------------------------------------------------------
+_shortcut_table = [
+    (
+        "DesktopShortcut",
+        "DesktopFolder",
+        BRAND.product_name,
+        "TARGETDIR",
+        "[TARGETDIR]saebooks-desktop.exe",
+        None,
+        f"{BRAND.product_name} — {BRAND.tagline}",
+        None,
+        None,
+        None,
+        None,
+        "TARGETDIR",
+    ),
+    (
+        "StartMenuShortcut",
+        "ProgramMenuFolder",
+        BRAND.product_name,
+        "TARGETDIR",
+        "[TARGETDIR]saebooks-desktop.exe",
+        None,
+        f"{BRAND.product_name} — {BRAND.tagline}",
+        None,
+        None,
+        None,
+        None,
+        "TARGETDIR",
+    ),
+]
 
 # ---------------------------------------------------------------------------
 # MSI-specific options.
@@ -130,6 +183,9 @@ bdist_msi_options: dict = {
     "all_users": True,
     # Product name shown in Add/Remove Programs.
     "product_name": BRAND.product_name,
+    # Icon shown by the installer UI and in Add/Remove Programs.
+    "install_icon": ICON_PATH,
+    "data": {"Shortcut": _shortcut_table},
 }
 
 # ---------------------------------------------------------------------------
@@ -138,14 +194,15 @@ bdist_msi_options: dict = {
 # Windows (suppresses the console window) and lets the spec at least be
 # smoke-checked with build_exe on Linux/macOS.
 # ---------------------------------------------------------------------------
+# Shortcuts are defined via the MSI Shortcut data table above (desktop AND
+# Start menu) — no shortcut_name/shortcut_dir here, or we'd get a duplicate
+# desktop shortcut.
 executables = [
     Executable(
         script=str(_here / "saebooks_desktop" / "__main__.py"),
         base="gui",
         target_name="saebooks-desktop.exe",
-        shortcut_name=BRAND.product_name,
-        shortcut_dir="DesktopFolder",
-        # icon="deploy/windows/saebooks.ico",  # Uncomment when icon is added.
+        icon=ICON_PATH,
     ),
 ]
 
