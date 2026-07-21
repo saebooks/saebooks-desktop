@@ -37,6 +37,11 @@ if /i "%BRAND%"=="tasur" (
     set "MSI_PREFIX=SAEBooks"
 )
 
+REM Clear stale MSIs first. The rename step below picks "the .msi in dist\",
+REM and a leftover from an earlier build silently wins that race — that is how
+REM a stale 264 MB artifact got mistaken for a fresh 50 MB one on 2026-07-22.
+if exist dist\*.msi del /q dist\*.msi
+
 echo Building %MSI_PREFIX% MSI...
 python deploy\windows\setup_freeze.py bdist_msi
 if errorlevel 1 (
@@ -65,11 +70,19 @@ echo VC++ runtime present: %VCRT_FOUND%
 
 REM cx_Freeze names the file <name>-<version>-<platform>.msi inside dist\.
 REM Rename to our canonical <Brand>-<version>-x64.msi convention.
+set "BUILT_MSI="
+set "MSI_COUNT=0"
 for /f "delims=" %%F in ('dir /b /s dist\*.msi 2^>nul') do (
     set "BUILT_MSI=%%F"
+    set /a MSI_COUNT+=1
 )
 if not defined BUILT_MSI (
     echo No .msi found in dist\ after build.
+    exit /b 1
+)
+if not "%MSI_COUNT%"=="1" (
+    echo ERROR: %MSI_COUNT% .msi files in dist\ — cannot tell which one this
+    echo build produced. Clear dist\ and rebuild.
     exit /b 1
 )
 
