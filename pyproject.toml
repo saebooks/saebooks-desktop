@@ -88,7 +88,11 @@ long_description = "SAE Books self-hosted double-entry accounting — native des
 icon = "deploy/macos/icons/saebooks"
 sources = ["saebooks_desktop", "desktop"]
 requires = [
-    "PySide6>=6.5",
+    # Essentials, not full PySide6: macOS-validated 2026-07-22 — the client
+    # imports only QtCore/QtGui/QtWidgets (all in Essentials); dropping the
+    # WebEngine/Quick3D/Charts/Multimedia Addons yields a smaller universal2
+    # DMG that launches clean. Matches [project.dependencies] above.
+    "PySide6-Essentials>=6.5",
     "httpx>=0.27",
     "platformdirs>=4.0",
     "grpcio>=1.60",
@@ -107,7 +111,11 @@ long_description = "tasur — self-hosted double-entry accounting, Estonia brand
 icon = "deploy/macos/icons/tasur"
 sources = ["saebooks_desktop", "tasur"]
 requires = [
-    "PySide6>=6.5",
+    # Essentials, not full PySide6: macOS-validated 2026-07-22 — the client
+    # imports only QtCore/QtGui/QtWidgets (all in Essentials); dropping the
+    # WebEngine/Quick3D/Charts/Multimedia Addons yields a smaller universal2
+    # DMG that launches clean. Matches [project.dependencies] above.
+    "PySide6-Essentials>=6.5",
     "httpx>=0.27",
     "platformdirs>=4.0",
     "grpcio>=1.60",
