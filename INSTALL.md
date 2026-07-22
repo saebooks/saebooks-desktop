@@ -83,8 +83,8 @@ Same as Linux below: where is your server, sign in, pick your company.
 
 **Download** the disk image for your product:
 
-- SAE Books: `SAE Books-0.4.0.dmg`
-- tasur: `tasur-0.4.0.dmg`
+- SAE Books: `SAEBooks-0.4.0-universal2.dmg`
+- tasur: `tasur-0.4.0-universal2.dmg`
 
 1. Open the `.dmg` and drag the app into **Applications**.
 2. The app is beta software and not yet notarized with Apple, so

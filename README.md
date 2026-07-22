@@ -23,12 +23,19 @@ Download from the
 |---|---|---|
 | Windows 10/11 x64 | `SAEBooks-0.4.0-x64.msi` | `tasur-0.4.0-x64.msi` |
 | Linux x86_64 | `SAEBooks-0.4.0-x86_64.AppImage` | `tasur-0.4.0-x86_64.AppImage` |
-| macOS | *v0.4 build pending* — use the universal DMG on the [v0.3.0 release](https://github.com/saebooks/saebooks-desktop/releases/tag/v0.3.0) | — |
+| macOS 13+ (universal2) | `SAEBooks-0.4.0-universal2.dmg` | `tasur-0.4.0-universal2.dmg` |
 
 **Windows:** double-click the MSI. SmartScreen shows "Windows protected your
 PC" — click **More info → Run anyway** (unsigned build; expected). The VC++
 runtime is bundled — nothing else to install. You get a Start-menu entry and
 desktop shortcut.
+
+**macOS:** open the DMG and drag the app to Applications. The build is a
+universal2 binary (Apple Silicon + Intel), ad-hoc signed but **not notarised**,
+so on first launch Gatekeeper says the developer cannot be verified —
+right-click (or Control-click) the app and choose **Open**, then **Open** again
+in the dialog. This is a one-time step. (Notarisation lands once the Apple
+Developer signing identity is in place.)
 
 **Linux:** make the AppImage executable (right-click → Properties →
 "Allow executing file as program", or `chmod +x`) and double-click it. If
