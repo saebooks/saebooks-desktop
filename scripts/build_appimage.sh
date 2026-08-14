@@ -201,11 +201,15 @@ trap 'rm -rf "${STAGE_DIR}" "${WORKDIR}"' EXIT
 echo "==> Running python-appimage build app"
 (
     cd "${WORKDIR}"
+    # NOTE: the appdir positional MUST come before -x. python-appimage declares
+    # --extra-data with nargs='+', so a trailing -x swallows the positional and
+    # argparse then aborts with "the following arguments are required: appdir"
+    # before any build work happens.
     "${PA_RUNNER[@]}" build app \
         -l "manylinux_2_28_${APPIMAGE_ARCH}" \
         -p "3.12" \
-        -x "${EXTRA_DIR}/usr" \
-        "${STAGE_DIR}"
+        "${STAGE_DIR}" \
+        -x "${EXTRA_DIR}/usr"
 )
 
 # python-appimage names the output "<Name>-<arch>.AppImage". Find it.
