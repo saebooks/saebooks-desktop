@@ -35,10 +35,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install "python-appimage>=1.2"
 
-      - name: Install FUSE (required by AppImage runtime)
+      - name: Install FUSE + libxcb-cursor0 (AppImage runtime / Qt xcb plugin)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libfuse2
+          sudo apt-get install -y --no-install-recommends libfuse2 libxcb-cursor0
 
       - name: Build AppImage
         run: bash scripts/build_appimage.sh --arch amd64
@@ -70,10 +70,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install "python-appimage>=1.2"
 
-      - name: Install FUSE (required by AppImage runtime)
+      - name: Install FUSE + libxcb-cursor0 (AppImage runtime / Qt xcb plugin)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libfuse2
+          sudo apt-get install -y --no-install-recommends libfuse2 libxcb-cursor0
 
       - name: Build AppImage
         run: bash scripts/build_appimage.sh --arch arm64

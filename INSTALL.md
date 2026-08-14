@@ -29,9 +29,19 @@ An AppImage is a program in a single file — nothing to install.
    switch labelled "Executable"). You only do this once.
 3. Double-click the file. The app opens.
 
-If double-clicking does nothing, your system may be missing one common
-component. Open a terminal and run `sudo apt install libfuse2`, then
-double-click again. (This is the only technical step you might ever need.)
+If double-clicking does nothing, your system may be missing one of two
+common components. Open a terminal and run:
+
+```
+sudo apt install libfuse2 libxcb-cursor0
+```
+
+then double-click again. (This is the only technical step you might ever
+need.)
+
+`libxcb-cursor0` is required only by version 0.4.0 and earlier, which did
+not carry it inside the file. Later versions bundle it, so on those the
+app opens straight away.
 
 ### First run — three short questions
 

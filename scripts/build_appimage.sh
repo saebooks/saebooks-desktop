@@ -141,6 +141,44 @@ else
     exit 1
 fi
 
+# --------------------------------------------------------------------------
+# Bundle libxcb-cursor.so.0.
+#
+# Qt 6.5+ links its xcb platform plugin against libxcb-cursor, and the PySide6
+# wheel does NOT ship it. Every other libxcb-* the plugin needs is common
+# enough to be present on a desktop host, but libxcb-cursor0 is not installed
+# by default on many distributions (Ubuntu included). Without it the AppImage
+# does not degrade -- Qt fails to load the xcb plugin and the process aborts
+# before a single window appears:
+#
+#     qt.qpa.plugin: Could not load the Qt platform plugin "xcb"
+#     Aborted (core dumped)
+#
+# This is the Linux twin of the Windows include_msvcr trap. Verified on skiff
+# 2026-08-14: the shipped 0.4.0 AppImage aborted on a host without the
+# package, and starting normally required nothing but this one library.
+#
+# entrypoint.sh already puts ${APPDIR}/usr/lib first on LD_LIBRARY_PATH, so
+# dropping the file there is the whole fix. python-appimage merges a staged
+# `usr` tree into the AppDir via --extra-data.
+# --------------------------------------------------------------------------
+EXTRA_DIR="${STAGE_DIR}/extra"
+mkdir -p "${EXTRA_DIR}/usr/lib"
+
+XCB_CURSOR_SRC="$(ldconfig -p 2>/dev/null \
+    | awk '/libxcb-cursor\.so\.0/ {print $NF; exit}')"
+
+if [[ -z "${XCB_CURSOR_SRC}" || ! -e "${XCB_CURSOR_SRC}" ]]; then
+    echo "ERROR: libxcb-cursor.so.0 not found on the build host." >&2
+    echo "       It must be bundled or the AppImage aborts before any UI." >&2
+    echo "       Install it, then rebuild:  sudo apt-get install -y libxcb-cursor0" >&2
+    exit 1
+fi
+
+# Dereference: the runtime linker needs the real object, not a build symlink.
+cp -L "${XCB_CURSOR_SRC}" "${EXTRA_DIR}/usr/lib/libxcb-cursor.so.0"
+echo "    bundling libxcb-cursor.so.0 from ${XCB_CURSOR_SRC}"
+
 # requirements.txt: PyPI deps + the local wheel by absolute path.
 # python-appimage iterates lines and pip-installs each; absolute paths work
 # regardless of pip's CWD (which is the python-appimage tmpdir at install time).
@@ -166,6 +204,7 @@ echo "==> Running python-appimage build app"
     "${PA_RUNNER[@]}" build app \
         -l "manylinux_2_28_${APPIMAGE_ARCH}" \
         -p "3.12" \
+        -x "${EXTRA_DIR}/usr" \
         "${STAGE_DIR}"
 )
 
